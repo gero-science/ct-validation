@@ -1,0 +1,30 @@
+# ct-validation package configuration
+
+# === DATA PATHS ===
+data:
+    # Semantic similarity
+    efo_similarity_lookup: "data/mappings/efo_similarity_lookup_0.5.parquet"
+
+    # Validation inputs (from parsing scripts)
+    genetic_evidence: "data/genetic_evidence/aggregated/genetic_evidence.parquet"
+    clinical_trials: "data/clinical_trials/aggregated/gene_indication_max_phase.parquet"
+
+    # Gene universe filter (optional)
+    gene_universe: "data/mappings/protein_coding_genes.txt"
+
+# === OUTPUT ===
+output:
+    dir: "results/"
+    save_trials: false
+
+# === VALIDATION THRESHOLDS ===
+thresholds:
+    semantic_similarity: 0.8
+
+# === PHASE TRANSITIONS ===
+# [from_phase, to_phase] - code auto-generates labels
+phase_transitions:
+    - [1, 2] # Phase I → Phase II
+    - [2, 3] # Phase II → Phase III
+    - [3, 4] # Phase III → Approved
+    - [1, 4] # Phase I → Approved
