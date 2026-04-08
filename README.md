@@ -1,7 +1,7 @@
-# <img width="300" alt="ct-validation" src="https://github.com/user-attachments/assets/324f1df1-6b73-454c-af0d-5823139542a0" />
-
+# <img width="300" alt="ct-validation" src="https://github.com/user-attachments/assets/fc5443b6-e93b-4fbb-a841-fffca899eedf" />
 
 An open framework for benchmarking gene-indication evidence against clinical trial outcomes.
+
 
 `ct-validation` tests whether a set of gene-indication pairs is enriched for clinical success. It computes risk ratios and odds ratios with confidence intervals across clinical phase transitions and supports semantic disease matching through ontology-based similarity.
 
