@@ -53,6 +53,7 @@ thresholds:
     stitch_min_score: 700
     chembl_min_pchembl: 7.0
     # Genetic evidence
-    gwas_max_pvalue: 1.0e-8
+    gwas_max_pvalue: 5.0e-8
+    genebass_max_pvalue: 1.0e-7
     opentargets_min_score: 0.5
     clinvar_max_efo_per_condition: 10
