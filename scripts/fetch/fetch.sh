@@ -32,7 +32,8 @@ gzip -f gwas-catalog-associations.tsv
 
 step 2 "ClinVar"
 cd "${BASE_DIR}/data/sources/clinvar"
-$WGET https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz
+$WGET https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar_20260404.vcf.gz
+mv clinvar_20260404.vcf.gz clinvar.vcf.gz
 
 step 3 "Open Targets (genetic evidence)"
 cd "${BASE_DIR}/data/sources/opentargets/25.12"
