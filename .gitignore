@@ -16,7 +16,9 @@ venv/
 .vscode/
 *.swp
 
-/data/
+# Data
+data/
+!src/ct_validation/data
 output/
 *.parquet
 *.vcf.gz
