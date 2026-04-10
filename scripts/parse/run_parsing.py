@@ -7,8 +7,6 @@ Usage:
     python scripts/parsing/run_parsing.py --only clinical_trials --skip-aggregate
     python scripts/parsing/run_parsing.py --only clinical_trials --sources stitch
 
-Note: ChEMBL gene-drug fetching is now separate (scripts/fetch/chembl_fetch.py).
-      The chembl parser reads pre-fetched data.
 """
 
 import argparse
@@ -58,7 +56,10 @@ def run_script(
     if extra_args:
         cmd.extend(extra_args)
 
-    log.info(f"Running: {script_path.name}" + (f" {' '.join(extra_args)}" if extra_args else ""))
+    log.info(
+        f"Running: {script_path.name}"
+        + (f" {' '.join(extra_args)}" if extra_args else ""),
+    )
     result = subprocess.run(cmd, check=False)
 
     if result.returncode != 0:
@@ -112,7 +113,9 @@ def main():
         help="Run only this domain",
     )
     parser.add_argument("--sources", type=str, help="Comma-separated sources to run")
-    parser.add_argument("--skip-aggregate", action="store_true", help="Skip aggregation step")
+    parser.add_argument(
+        "--skip-aggregate", action="store_true", help="Skip aggregation step",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -136,7 +139,9 @@ def main():
 
     # Run genetic evidence
     ge_cfg = run_cfg.get("genetic_evidence", {})
-    if (args.only is None or args.only == "genetic_evidence") and ge_cfg.get("enabled", True):
+    if (args.only is None or args.only == "genetic_evidence") and ge_cfg.get(
+        "enabled", True,
+    ):
         sources = cli_sources or ge_cfg.get("sources")
         if not run_domain(
             "genetic_evidence",
@@ -149,7 +154,9 @@ def main():
 
     # Run clinical trials
     ct_cfg = run_cfg.get("clinical_trials", {})
-    if (args.only is None or args.only == "clinical_trials") and ct_cfg.get("enabled", True):
+    if (args.only is None or args.only == "clinical_trials") and ct_cfg.get(
+        "enabled", True,
+    ):
         sources = cli_sources or ct_cfg.get("sources")
         if not run_domain(
             "clinical_trials",

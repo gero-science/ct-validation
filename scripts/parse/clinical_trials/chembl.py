@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Parse pre-fetched ChEMBL data to standardized gene-drug and drug-indication parquets.
+"""Parse ChEMBL SQLite database to standardized gene-drug and drug-indication parquets.
 
 Reads:
-- chembl_gene_drug: Pre-fetched gene-drug parquet (from scripts/fetch/chembl_fetch.py)
-- chembl_indications: ChEMBL indications TSV (from ChEMBL website drug indications download)
+- ChEMBL SQLite database (downloaded via scripts/fetch/chembl_fetch.sh)
 
 Outputs:
 - clinical_trials/chembl_gene_drug.parquet
@@ -12,7 +11,7 @@ Outputs:
 
 import argparse
 import logging
-from itertools import zip_longest
+import sqlite3
 from pathlib import Path
 
 import pandas as pd
@@ -21,104 +20,99 @@ import yaml
 log = logging.getLogger(__name__)
 
 
-def parse_gene_drug(gene_drug_path: Path) -> pd.DataFrame:
-    """Parse pre-fetched gene-drug parquet to standard schema."""
-    df = pd.read_parquet(gene_drug_path)
-    log.info(f"Loaded gene-drug: {len(df):,} rows")
-
-    result = df.rename(
-        columns={
-            "initial_target_name": "gene",
-            "molecule_chembl_id": "chembl_id",
-            "Parent Molecule Name": "drug_name",
-            "Parent Molecule Type": "molecule_type",
-        },
-    )
-    result["subsource"] = "ChEMBL"
-
-    keep = ["gene", "drug_name", "chembl_id", "molecule_type", "subsource", "action_type"]
-    keep = [c for c in keep if c in result.columns]
-    result = result[keep].drop_duplicates()
-
-    log.info(f"Gene-drug: {len(result):,} rows, {result['gene'].nunique():,} genes")
-    return result
-
-
-def parse_drug_indication(indications_path: Path) -> pd.DataFrame:
-    """Parse ChEMBL indications TSV to standard schema with EFO explosion."""
-    df = pd.read_csv(indications_path, sep="\t")
-    log.info(f"Loaded indications: {len(df):,} rows")
-
-    df = df.rename(
-        columns={
-            "MESH ID": "mesh_id",
-            "MESH Heading": "mesh_heading",
-            "Max Phase for Indication": "phase",
-            "Parent Molecule ChEMBL ID": "chembl_id",
-            "Parent Molecule Name": "drug_name",
-            "Parent Molecule Type": "molecule_type",
-            "References": "references",
-        },
-    )
-
-    df["phase"] = pd.to_numeric(df["phase"], errors="coerce")
-    df = df[(df["phase"].notna()) & (df["phase"] >= 0) & (df["phase"] <= 4)]
-    df = df[df["phase"] == df["phase"].astype(int)]  # drop non-integer phases (e.g. 0.5)
-    df["phase"] = df["phase"].astype("Int64")
-
-    # Explode pipe-delimited EFO IDs/Terms (handles mismatched lengths)
-    efo_ids_split = df["EFO IDs"].str.split("|")
-    efo_terms_split = df["EFO Terms"].str.split("|")
-    df["_efo_pairs"] = [
-        list(zip_longest(ids or [None], terms or [None], fillvalue=None))
-        for ids, terms in zip(
-            efo_ids_split.where(efo_ids_split.notna(), [[None]]),
-            efo_terms_split.where(efo_terms_split.notna(), [[None]]),
-        )
-    ]
-    df = df.explode("_efo_pairs")
-    df["efo_id"] = df["_efo_pairs"].str[0]
-    df["efo_term"] = df["_efo_pairs"].str[1]
-
+def _query_gene_drug(conn: sqlite3.Connection, min_pchembl: float) -> pd.DataFrame:
+    """Extract gene-drug mappings: human single-protein targets with pChEMBL >= threshold."""
+    log.info(f"Querying gene-drug mappings (pChEMBL >= {min_pchembl})...")
+    # sql
+    query = """
+        SELECT DISTINCT
+            cs.component_synonym AS gene,
+            parent_md.pref_name AS drug_name,
+            parent_md.chembl_id,
+            parent_md.molecule_type
+        FROM target_dictionary td
+        JOIN target_components tc ON td.tid = tc.tid
+        JOIN component_synonyms cs
+            ON tc.component_id = cs.component_id AND cs.syn_type = 'GENE_SYMBOL'
+        JOIN assays a ON td.tid = a.tid
+        JOIN activities act ON a.assay_id = act.assay_id
+        JOIN molecule_hierarchy mh ON act.molregno = mh.molregno
+        JOIN molecule_dictionary parent_md ON mh.parent_molregno = parent_md.molregno
+        WHERE td.target_type = 'SINGLE PROTEIN'
+          AND td.organism = 'Homo sapiens'
+          AND act.pchembl_value >= ?
+          AND parent_md.max_phase > 0
+    """
+    df = pd.read_sql_query(query, conn, params=(min_pchembl,))
     df["subsource"] = "ChEMBL"
+    log.info(f"Gene-drug: {len(df):,} rows, {df['gene'].nunique():,} genes")
+    return df
 
-    keep = [
-        "efo_id",
-        "phase",
-        "drug_name",
-        "chembl_id",
-        "mesh_id",
-        "mesh_heading",
-        "efo_term",
-        "subsource",
-        "references",
-        "molecule_type",
-    ]
-    result = df[keep].drop_duplicates()
 
-    log.info(f"Drug-indication: {len(result):,} rows, {result['chembl_id'].nunique():,} drugs")
-    return result
+def _query_drug_indication(conn: sqlite3.Connection) -> pd.DataFrame:
+    """Extract drug-indication mappings with EFO terms."""
+    log.info("Querying drug-indication mappings...")
+    # sql
+    query = """
+        WITH refs AS (
+            SELECT
+                drugind_id,
+                GROUP_CONCAT(
+                    'Type: ' || ref_type || ' RefID: ' || ref_id || ' URL: ' || ref_url,
+                    '|'
+                ) AS "references"
+            FROM indication_refs
+            GROUP BY drugind_id
+        )
+        SELECT DISTINCT
+            di.efo_id,
+            CAST(di.max_phase_for_ind AS INTEGER) AS phase,
+            parent_md.pref_name AS drug_name,
+            parent_md.chembl_id,
+            di.mesh_id,
+            di.mesh_heading,
+            di.efo_term,
+            parent_md.molecule_type,
+            r."references"
+        FROM drug_indication di
+        JOIN molecule_hierarchy mh ON di.molregno = mh.molregno
+        JOIN molecule_dictionary parent_md ON mh.parent_molregno = parent_md.molregno
+        LEFT JOIN refs r ON di.drugind_id = r.drugind_id
+        WHERE di.max_phase_for_ind >= 0
+          AND di.max_phase_for_ind = CAST(di.max_phase_for_ind AS INTEGER)
+          AND di.efo_id IS NOT NULL
+    """
+    df = pd.read_sql_query(query, conn)
+    # Convert EFO URIs to CURIEs:
+    #   http://www.ebi.ac.uk/efo/EFO_0000249 -> EFO:0000249
+    #   http://purl.obolibrary.org/obo/MONDO_0005015 -> MONDO:0005015
+    df["efo_id"] = df["efo_id"].str.rsplit("/", n=1).str[-1].str.replace("_", ":", n=1)
+    df["subsource"] = "ChEMBL"
+    log.info(f"Drug-indication: {len(df):,} rows, {df['chembl_id'].nunique():,} drugs")
+    return df
 
 
 def parse_chembl(
-    gene_drug_path: Path,
-    indications_path: Path | None,
+    db_path: Path,
     gene_drug_output: Path,
-    drug_indication_output: Path | None,
+    drug_indication_output: Path,
+    min_pchembl: float = 7.0,
 ) -> pd.DataFrame:
-    """Parse ChEMBL data to standardized outputs."""
-    gene_drug_output.parent.mkdir(parents=True, exist_ok=True)
+    """Parse ChEMBL SQLite database to standardized outputs."""
+    log.info(f"Opening ChEMBL database: {db_path}")
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
 
-    gene_drug = parse_gene_drug(gene_drug_path)
+    gene_drug = _query_gene_drug(conn, min_pchembl)
+    drug_indication = _query_drug_indication(conn)
+    conn.close()
+
+    gene_drug_output.parent.mkdir(parents=True, exist_ok=True)
     gene_drug.to_parquet(gene_drug_output, index=False)
     log.info(f"Saved gene-drug to {gene_drug_output}")
 
-    if indications_path and indications_path.exists():
-        drug_indication = parse_drug_indication(indications_path)
-        if drug_indication_output:
-            drug_indication_output.parent.mkdir(parents=True, exist_ok=True)
-            drug_indication.to_parquet(drug_indication_output, index=False)
-            log.info(f"Saved drug-indication to {drug_indication_output}")
+    drug_indication_output.parent.mkdir(parents=True, exist_ok=True)
+    drug_indication.to_parquet(drug_indication_output, index=False)
+    log.info(f"Saved drug-indication to {drug_indication_output}")
 
     return gene_drug
 
@@ -129,9 +123,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--config", type=Path, help="Config YAML")
-    parser.add_argument("--gene-drug", type=Path, help="Pre-fetched gene-drug parquet")
-    parser.add_argument("--indications", type=Path, help="ChEMBL indications TSV")
+    parser.add_argument("--db", type=Path, help="ChEMBL SQLite database path")
     parser.add_argument("--output-dir", type=Path, help="Output directory")
+    parser.add_argument("--min-pchembl", type=float, help="Minimum pChEMBL threshold")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -141,26 +135,25 @@ def main():
     )
 
     config_path = (
-        args.config or Path(__file__).parent.parent.parent.parent / "configs" / "parsing.yaml"
+        args.config
+        or Path(__file__).parent.parent.parent.parent / "configs" / "parsing.yaml"
     )
     if config_path.exists():
         with config_path.open() as f:
             cfg = yaml.safe_load(f)
         ct_inputs = cfg.get("clinical_trials", {})
+        thresholds = cfg.get("thresholds", {})
         output_dir = Path(cfg.get("output_dir", "."))
     else:
-        ct_inputs, output_dir = {}, Path()
+        ct_inputs, thresholds, output_dir = {}, {}, Path()
 
-    ct_out = output_dir / "clinical_trials"
-    indications = args.indications or (
-        Path(p) if (p := ct_inputs.get("chembl_indications")) else None
-    )
+    out_dir = args.output_dir or output_dir / "clinical_trials"
 
     parse_chembl(
-        gene_drug_path=args.gene_drug or Path(ct_inputs.get("chembl_gene_drug", "")),
-        indications_path=indications,
-        gene_drug_output=args.output_dir or ct_out / "chembl_gene_drug.parquet",
-        drug_indication_output=ct_out / "chembl_drug_indication.parquet" if indications else None,
+        db_path=args.db or Path(ct_inputs.get("chembl_db", "")),
+        gene_drug_output=out_dir / "chembl_gene_drug.parquet",
+        drug_indication_output=out_dir / "chembl_drug_indication.parquet",
+        min_pchembl=args.min_pchembl or thresholds.get("chembl_min_pchembl", 7.0),
     )
 
 

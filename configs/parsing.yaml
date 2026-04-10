@@ -29,8 +29,7 @@ clinical_trials:
     stitch_chemical_sources: "data/sources/stitch/chemical_sources.tsv.gz"
     stitch_protein_aliases: "data/sources/stitch/string_protein_aliases.tsv.gz"
     # ChEMBL
-    chembl_gene_drug: "data/sources/chembl/gene_drug_mapping.parquet"
-    chembl_indications: "data/sources/chembl/chembl_indications.tsv"
+    chembl_db: "data/sources/chembl/chembl_36.db"
     # DGIdb
     dgidb_interactions: "data/sources/dgidb/interactions.tsv"
     dgidb_drugs: "data/sources/dgidb/drugs.tsv"

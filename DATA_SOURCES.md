@@ -16,7 +16,7 @@ Parsed outputs needed to reproduce the benchmark are included in the data releas
 
 | Source | Version | Files | Download |
 |---|---|---|---|
-| ChEMBL | 36 | Gene-drug mappings (via API), drug indications | API: `scripts/fetch/chembl_fetch.py`; indications: https://www.ebi.ac.uk/chembl/explore/drug_indications |
+| ChEMBL | 36 | `chembl_36.db` (SQLite) | `bash scripts/fetch/chembl_fetch.sh`; source: https://ftp.ebi.ac.uk/pub/databases/chembl/ChEMBLdb/releases/chembl_36/ |
 | Open Targets Platform | 25.12 | `known_drug/` | https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/ |
 | STITCH / STRING | v5.0 / v12.0 | `9606.actions.v5.0.tsv.gz`, `9606.chemical_sources.v5.0.tsv.gz`, `9606.protein.aliases.v12.0.txt.gz` (STRING, for gene symbol mapping) | http://stitch.embl.de/cgi/download.pl, https://string-db.org/cgi/download |
 | DGIdb | 2024-Dec | `interactions.tsv`, `drugs.tsv` | https://dgidb.org/downloads |
