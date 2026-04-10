@@ -88,7 +88,7 @@ def parse_stitch(
 
     # Map proteins to genes
     clean = clean.with_columns(
-        pl.col("item_id_b").replace(ensp_to_hugo, default=None).alias("gene")
+        pl.col("item_id_b").replace_strict(ensp_to_hugo, default=None).alias("gene")
     ).filter(pl.col("gene").is_not_null())
     log.info(f"After gene mapping: {len(clean):,} interactions")
 

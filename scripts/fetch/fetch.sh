@@ -61,9 +61,9 @@ mv 9606.protein.aliases.v12.0.txt.gz string_protein_aliases.tsv.gz
 
 step 8 "DGIdb"
 cd "${BASE_DIR}/data/sources/dgidb"
-$WGET https://dgidb.org/downloads/interactions.tsv
+$WGET https://dgidb.org/data/2024-Dec/interactions.tsv
 gzip -f interactions.tsv
-$WGET https://dgidb.org/downloads/drugs.tsv
+$WGET https://dgidb.org/data/2024-Dec/drugs.tsv
 gzip -f drugs.tsv
 
 step 9 "TrialPanorama"
@@ -73,5 +73,6 @@ hf download TrialPanorama/TrialPanorama-database --local-dir . --repo-type datas
 step 10 "EFO ontology"  # bonus step — not counted in skips
 cd "${BASE_DIR}/data/mappings"
 $WGET https://github.com/EBISPOT/efo/releases/download/v3.84.0/efo.obo
+mv efo.obo efo_v3.84.0.obo
 
 echo "Done. Mappings (OxO, UKB manifest, gene universe) must be placed manually from the data release."

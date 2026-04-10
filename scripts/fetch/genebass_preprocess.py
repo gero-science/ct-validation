@@ -4,7 +4,7 @@
 Reads the raw Hail MatrixTable from Genebass (500k exome sequencing)
 and exports significant gene-phenotype associations as a parquet file.
 
-Requires Hail (pip install hail) and Java 17.
+Requires Hail and Java 11. Install with: uv pip install "ct-validation[genebass]"
 
 Input:
     results.mt from gs://ukbb-exome-public/500k/results/results.mt

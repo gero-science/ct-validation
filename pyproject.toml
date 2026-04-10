@@ -57,6 +57,9 @@ fetch = [
     "joblib",
     "tqdm",
 ]
+genebass = [
+    "hail",                          # requires Java 11; for genebass_preprocess.py only
+]
 plot = [
     "matplotlib",
 ]
