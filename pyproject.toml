@@ -46,12 +46,14 @@ build-backend = "uv_build"
 
 [project.optional-dependencies]
 parse = [
+    "polars>=1.5",                   # stitch.py (scan_csv on .gz requires >=1.5)
     "requests",
     "tqdm",
-    "cyvcf2",                       # clinvar.py
+    "cyvcf2",                        # clinvar.py
 ]
 fetch = [
     "chembl-webresource-client",
+    "huggingface_hub",
     "joblib",
     "tqdm",
 ]

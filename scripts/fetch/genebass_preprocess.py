@@ -10,7 +10,7 @@ Input:
     results.mt from gs://ukbb-exome-public/500k/results/results.mt
 
 Output:
-    gene_associations_p1e-5.parquet with columns:
+    gene_associations_p1e-7.parquet with columns:
         gene_id, gene_symbol, annotation, phenocode, description,
         coding_description, category, n_cases, n_controls,
         Pvalue, Pvalue_Burden, Pvalue_SKAT, BETA_Burden, SE_Burden
@@ -25,7 +25,7 @@ import hail as hl
 def preprocess_genebass(
     input_path: str,
     output_path: str,
-    pvalue_threshold: float = 1e-5,
+    pvalue_threshold: float = 1e-7,
     n_cores: int = 16,
 ) -> None:
     """Filter Genebass MatrixTable by p-value and export to parquet."""
@@ -63,7 +63,7 @@ def preprocess_genebass(
     print(f"Significant associations: {n_results:,}")
 
     print(f"Exporting to: {output_path}")
-    results_table.export(output_path)
+    results_table.to_pandas().to_parquet(output_path, index=False)
     print("Done!")
 
 
@@ -81,14 +81,14 @@ def main():
     parser.add_argument(
         "--output",
         type=str,
-        default="data/sources/genebass/gene_associations_p1e-5.parquet",
+        default="data/sources/genebass/gene_associations_p1e-7.parquet",
         help="Output parquet path",
     )
     parser.add_argument(
         "--pvalue",
         type=float,
-        default=1e-5,
-        help="P-value threshold (default: 1e-5)",
+        default=1e-7,
+        help="P-value threshold (default: 1e-7)",
     )
     parser.add_argument(
         "--cores",

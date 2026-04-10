@@ -164,7 +164,7 @@ The `scripts/` directory contains reproducible parsers for public databases:
 - ClinVar — pathogenic/likely pathogenic variants
 - OMIM — established molecular basis (mapping code 3)
 - Open Targets — genetic evidence streams (score ≥ 0.5)
-- Genebass — exome-wide associations (p ≤ 1e-5)
+- Genebass — exome-wide associations (p ≤ 1e-7)
 
 **Clinical trials** (`scripts/parse/clinical_trials/`):
 
