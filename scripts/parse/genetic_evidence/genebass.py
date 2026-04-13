@@ -2,7 +2,7 @@
 """Parse Genebass gene-based association results to gene-disease pairs.
 
 Reads:
-- genebass_associations: Pre-filtered Genebass parquet (p < 1e-5)
+- genebass_associations: Pre-filtered Genebass parquet (p < 1e-7)
 - ukb_phenotype_manifest: UK Biobank phenotype manifest with EFO mappings
 
 Outputs:
@@ -23,7 +23,7 @@ def parse_genebass(
     associations_path: Path,
     manifest_path: Path,
     output_path: Path,
-    max_pvalue: float = 1e-5,
+    max_pvalue: float = 1e-7,
 ) -> pd.DataFrame:
     """Parse Genebass to gene-disease associations with EFO mapping."""
     log.info(f"Loading Genebass from {associations_path}")
@@ -127,7 +127,7 @@ def main():
         associations_path=args.input or Path(ge_inputs.get("genebass_associations", "")),
         manifest_path=args.manifest or Path(mappings.get("ukb_phenotype_manifest", "")),
         output_path=args.output or output_dir / "genetic_evidence" / "genebass.parquet",
-        max_pvalue=args.max_pvalue or thresholds.get("genebass_max_pvalue", 1e-5),
+        max_pvalue=args.max_pvalue or thresholds.get("genebass_max_pvalue", 1e-7),
     )
 
 

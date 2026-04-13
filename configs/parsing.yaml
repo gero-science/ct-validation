@@ -18,9 +18,9 @@ genetic_evidence:
     clinvar_vcf: "data/sources/clinvar/clinvar.vcf.gz"
     opentargets_association: "data/sources/opentargets/25.12/association_by_datasource_direct"
     opentargets_target: "data/sources/opentargets/25.12/target"
-    omim_genemap2: "data/sources/omim/genemap2.txt"
+    omim_genemap2: "data/sources/omim/genemap2.txt.gz"
     omim_to_efo: "data/mappings/omim_to_efo.tsv"
-    genebass_associations: "data/sources/genebass/gene_associations_p1e-5.parquet"
+    genebass_associations: "data/sources/genebass/gene_associations_p1e-7.parquet"
 
 # === CLINICAL TRIALS INPUTS ===
 clinical_trials:
@@ -31,8 +31,8 @@ clinical_trials:
     # ChEMBL
     chembl_db: "data/sources/chembl/chembl_36.db"
     # DGIdb
-    dgidb_interactions: "data/sources/dgidb/interactions.tsv"
-    dgidb_drugs: "data/sources/dgidb/drugs.tsv"
+    dgidb_interactions: "data/sources/dgidb/interactions.tsv.gz"
+    dgidb_drugs: "data/sources/dgidb/drugs.tsv.gz"
     # TrialPanorama
     trialpanorama_dir: "data/sources/trialpanorama/"
     # Open Targets

@@ -5,67 +5,45 @@ import argparse
 import logging
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 import yaml
 
 log = logging.getLogger(__name__)
 
 
-def create_ensp_to_hugo_mapping(protein_aliases: pd.DataFrame) -> dict[str, str]:
+def create_ensp_to_hugo_mapping(protein_aliases: pl.DataFrame) -> dict[str, str]:
     """Create ENSP -> HUGO gene symbol mapping."""
-    hugo_sources = protein_aliases[
-        protein_aliases["source"].isin(
-            ["BioMart_HUGO", "Ensembl_HGNC_symbol", "Ensembl_HGNC", "UniProt_GN_Name"],
-        )
-    ].copy()
-
     source_priority = {
         "BioMart_HUGO": 1,
         "Ensembl_HGNC_symbol": 2,
         "Ensembl_HGNC": 3,
         "UniProt_GN_Name": 4,
     }
-    hugo_sources["priority"] = hugo_sources["source"].map(source_priority)
-    hugo_sources = hugo_sources.sort_values("priority").drop_duplicates(
-        subset=["#string_protein_id"],
-        keep="first",
-    )
 
-    mapping = dict(zip(hugo_sources["#string_protein_id"], hugo_sources["alias"]))
+    hugo = protein_aliases.filter(pl.col("source").is_in(list(source_priority.keys())))
+    hugo = hugo.with_columns(pl.col("source").replace(source_priority).cast(pl.Int32).alias("priority"))
+    hugo = hugo.sort("priority").unique(subset=["#string_protein_id"], keep="first")
+
+    mapping = dict(zip(hugo["#string_protein_id"].to_list(), hugo["alias"].to_list()))
     log.info(f"Mapped {len(mapping):,} STRING protein IDs to HUGO symbols")
     return mapping
 
 
 def create_chemical_id_mappings(
-    chemical_sources: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+    chemical_sources: pl.DataFrame,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Create CID -> ChEMBL and CID -> DrugBank mappings."""
-    # ChEMBL mapping
-    chembl_sources = chemical_sources[chemical_sources["source_type"] == "ChEMBL"][
-        ["chemical", "alias", "source_id"]
-    ]
-    chembl_from_chemical = chembl_sources[["chemical", "source_id"]].rename(
-        columns={"chemical": "cid", "source_id": "chembl_id"},
+    chembl = chemical_sources.filter(pl.col("source_type") == "ChEMBL")
+    chembl_mapping = (
+        chembl.select(pl.col("chemical").alias("cid"), pl.col("source_id").alias("chembl_id"))
+        .unique(subset=["cid"], keep="first")
     )
-    chembl_from_alias = chembl_sources[["alias", "source_id"]].rename(
-        columns={"alias": "cid", "source_id": "chembl_id"},
-    )
-    chembl_mapping = pd.concat([chembl_from_chemical, chembl_from_alias], ignore_index=True)
-    chembl_mapping["chembl_id"] = chembl_mapping["chembl_id"].astype(str)
-    chembl_mapping = chembl_mapping.drop_duplicates(subset=["cid"], keep="first")
 
-    # DrugBank mapping
-    drugbank_sources = chemical_sources[chemical_sources["source_type"] == "DrugBank"][
-        ["chemical", "alias", "source_id"]
-    ]
-    drugbank_from_chemical = drugbank_sources[["chemical", "source_id"]].rename(
-        columns={"chemical": "cid", "source_id": "drugbank_id"},
+    drugbank = chemical_sources.filter(pl.col("source_type") == "DrugBank")
+    drugbank_mapping = (
+        drugbank.select(pl.col("chemical").alias("cid"), pl.col("source_id").alias("drugbank_id"))
+        .unique(subset=["cid"], keep="first")
     )
-    drugbank_from_alias = drugbank_sources[["alias", "source_id"]].rename(
-        columns={"alias": "cid", "source_id": "drugbank_id"},
-    )
-    drugbank_mapping = pd.concat([drugbank_from_chemical, drugbank_from_alias], ignore_index=True)
-    drugbank_mapping = drugbank_mapping.drop_duplicates(subset=["cid"], keep="first")
 
     log.info(f"ChEMBL mappings: {len(chembl_mapping):,}, DrugBank: {len(drugbank_mapping):,}")
     return chembl_mapping, drugbank_mapping
@@ -77,87 +55,71 @@ def parse_stitch(
     protein_aliases_path: Path,
     output_path: Path,
     min_score: int = 700,
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """Parse STITCH data to gene-drug mapping."""
     log.info("Loading STITCH data...")
-    actions = pd.read_csv(actions_path, sep="\t")
-    chemical_sources = pd.read_csv(
-        chemical_sources_path,
-        sep="\t",
-        comment="#",
-        names=["chemical", "alias", "source_type", "source_id"],
-        skiprows=1,
-        low_memory=False,
+    actions = pl.read_csv(actions_path, separator="\t")
+    chemical_sources = (
+        pl.scan_csv(
+            chemical_sources_path,
+            separator="\t",
+            has_header=False,
+            new_columns=["chemical", "alias", "source_type", "source_id"],
+            skip_rows=1,
+            comment_prefix="#",
+        )
+        .filter(pl.col("source_type").is_in(["ChEMBL", "DrugBank"]))
+        .collect()
     )
-    protein_aliases = pd.read_csv(protein_aliases_path, sep="\t")
+    protein_aliases = pl.read_csv(protein_aliases_path, separator="\t")
 
-    # Create mappings
     ensp_to_hugo = create_ensp_to_hugo_mapping(protein_aliases)
     chembl_mapping, drugbank_mapping = create_chemical_id_mappings(chemical_sources)
 
     # Filter actions
     log.info(f"Filtering actions (score >= {min_score})...")
-    clean_actions = actions[
-        actions["action"].isin(["activation", "inhibition"])
-        & (actions["score"] >= min_score)
-        & actions["item_id_a"].str.startswith("CID")
-        & actions["item_id_b"].str.startswith("9606.")
-        & (actions["a_is_acting"] == "t")
-    ].copy()
+    clean = actions.filter(
+        pl.col("action").is_in(["activation", "inhibition"])
+        & (pl.col("score") >= min_score)
+        & pl.col("item_id_a").str.starts_with("CID")
+        & pl.col("item_id_b").str.starts_with("9606.")
+        & (pl.col("a_is_acting") == "t")
+    )
 
     # Map proteins to genes
-    clean_actions["gene"] = clean_actions["item_id_b"].map(ensp_to_hugo)
-    clean_actions = clean_actions[clean_actions["gene"].notna()].copy()
-    log.info(f"After gene mapping: {len(clean_actions):,} interactions")
+    clean = clean.with_columns(
+        pl.col("item_id_b").replace_strict(ensp_to_hugo, default=None).alias("gene")
+    ).filter(pl.col("gene").is_not_null())
+    log.info(f"After gene mapping: {len(clean):,} interactions")
 
     # Add chemical ID mappings
-    clean_actions = clean_actions.merge(
-        chembl_mapping,
-        left_on="item_id_a",
-        right_on="cid",
-        how="left",
-    )
-    clean_actions = clean_actions.drop(columns=["cid"], errors="ignore")
-    clean_actions = clean_actions.merge(
-        drugbank_mapping,
-        left_on="item_id_a",
-        right_on="cid",
-        how="left",
-    )
-    clean_actions = clean_actions.drop(columns=["cid"], errors="ignore")
+    clean = clean.join(chembl_mapping, left_on="item_id_a", right_on="cid", how="left")
+    clean = clean.join(drugbank_mapping, left_on="item_id_a", right_on="cid", how="left")
 
     # Select and rename columns
-    result = clean_actions[
-        ["gene", "chembl_id", "drugbank_id", "item_id_a", "action", "mode", "score"]
-    ].rename(
-        columns={
-            "item_id_a": "stitch_id",
-            "action": "action_type",
-            "mode": "interaction_mode",
-            "score": "stitch_score",
-        },
+    result = clean.select(
+        "gene",
+        "chembl_id",
+        "drugbank_id",
+        pl.col("item_id_a").alias("stitch_id"),
+        pl.col("action").alias("action_type"),
+        pl.col("mode").alias("interaction_mode"),
+        pl.col("score").alias("stitch_score"),
+        pl.lit("STITCH").alias("subsource"),
+        pl.lit(None).cast(pl.Utf8).alias("drug_name"),
     )
 
-    result["subsource"] = "STITCH"
-    result["drug_name"] = None
+    log.info(f"Result: {len(result):,} interactions, {result['gene'].n_unique():,} genes")
 
-    log.info(f"Result: {len(result):,} interactions, {result['gene'].nunique():,} genes")
-
-    # Save
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    result.to_parquet(output_path, index=False)
+    result.write_parquet(output_path)
     log.info(f"Saved to {output_path}")
-
     return result
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--config",
-        type=Path,
-        help="Config YAML (uses configs/parsing.yaml by default)",
-    )
+    parser.add_argument("--config", type=Path, help="Config YAML")
     parser.add_argument("--actions", type=Path, help="STITCH actions.tsv.gz")
     parser.add_argument("--chemical-sources", type=Path, help="STITCH chemical_sources.tsv.gz")
     parser.add_argument("--protein-aliases", type=Path, help="STRING protein_aliases.txt.gz")
@@ -171,7 +133,6 @@ def main():
         format="%(asctime)s %(levelname)s %(message)s",
     )
 
-    # Load config
     config_path = (
         args.config or Path(__file__).parent.parent.parent.parent / "configs" / "parsing.yaml"
     )
@@ -184,7 +145,6 @@ def main():
     else:
         ct_inputs, thresholds, output_dir = {}, {}, Path()
 
-    # CLI args override config
     actions = args.actions or Path(ct_inputs.get("stitch_actions", ""))
     chemical_sources = args.chemical_sources or Path(ct_inputs.get("stitch_chemical_sources", ""))
     protein_aliases = args.protein_aliases or Path(ct_inputs.get("stitch_protein_aliases", ""))
