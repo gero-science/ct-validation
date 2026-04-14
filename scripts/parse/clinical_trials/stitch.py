@@ -21,7 +21,9 @@ def create_ensp_to_hugo_mapping(protein_aliases: pl.DataFrame) -> dict[str, str]
     }
 
     hugo = protein_aliases.filter(pl.col("source").is_in(list(source_priority.keys())))
-    hugo = hugo.with_columns(pl.col("source").replace(source_priority).cast(pl.Int32).alias("priority"))
+    hugo = hugo.with_columns(
+        pl.col("source").replace(source_priority).cast(pl.Int32).alias("priority"),
+    )
     hugo = hugo.sort("priority").unique(subset=["#string_protein_id"], keep="first")
 
     mapping = dict(zip(hugo["#string_protein_id"].to_list(), hugo["alias"].to_list()))
@@ -32,20 +34,33 @@ def create_ensp_to_hugo_mapping(protein_aliases: pl.DataFrame) -> dict[str, str]
 def create_chemical_id_mappings(
     chemical_sources: pl.DataFrame,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Create CID -> ChEMBL and CID -> DrugBank mappings."""
-    chembl = chemical_sources.filter(pl.col("source_type") == "ChEMBL")
-    chembl_mapping = (
-        chembl.select(pl.col("chemical").alias("cid"), pl.col("source_id").alias("chembl_id"))
-        .unique(subset=["cid"], keep="first")
-    )
+    """Create CID -> ChEMBL and CID -> DrugBank mappings.
 
-    drugbank = chemical_sources.filter(pl.col("source_type") == "DrugBank")
-    drugbank_mapping = (
-        drugbank.select(pl.col("chemical").alias("cid"), pl.col("source_id").alias("drugbank_id"))
-        .unique(subset=["cid"], keep="first")
-    )
+    STITCH stores the flat CID (CIDm...) in the `chemical` column and the
+    stereo CID (CIDs...) in the `alias` column; `actions.item_id_a` can be
+    either flavor, so both are used as CID keys.
+    """
 
-    log.info(f"ChEMBL mappings: {len(chembl_mapping):,}, DrugBank: {len(drugbank_mapping):,}")
+    def _build(source_type: str, id_col: str) -> pl.DataFrame:
+        rows = chemical_sources.filter(pl.col("source_type") == source_type)
+        from_chemical = rows.select(
+            pl.col("chemical").alias("cid"), pl.col("source_id").alias(id_col),
+        )
+        from_alias = rows.select(
+            pl.col("alias").alias("cid"), pl.col("source_id").alias(id_col),
+        )
+        return (
+            pl.concat([from_chemical, from_alias])
+            .with_columns(pl.col(id_col).cast(pl.Utf8))
+            .unique(subset=["cid"], keep="first")
+        )
+
+    chembl_mapping = _build("ChEMBL", "chembl_id")
+    drugbank_mapping = _build("DrugBank", "drugbank_id")
+
+    log.info(
+        f"ChEMBL mappings: {len(chembl_mapping):,}, DrugBank: {len(drugbank_mapping):,}",
+    )
     return chembl_mapping, drugbank_mapping
 
 
@@ -83,18 +98,20 @@ def parse_stitch(
         & (pl.col("score") >= min_score)
         & pl.col("item_id_a").str.starts_with("CID")
         & pl.col("item_id_b").str.starts_with("9606.")
-        & (pl.col("a_is_acting") == "t")
+        & (pl.col("a_is_acting") == "t"),
     )
 
     # Map proteins to genes
     clean = clean.with_columns(
-        pl.col("item_id_b").replace_strict(ensp_to_hugo, default=None).alias("gene")
+        pl.col("item_id_b").replace_strict(ensp_to_hugo, default=None).alias("gene"),
     ).filter(pl.col("gene").is_not_null())
     log.info(f"After gene mapping: {len(clean):,} interactions")
 
     # Add chemical ID mappings
     clean = clean.join(chembl_mapping, left_on="item_id_a", right_on="cid", how="left")
-    clean = clean.join(drugbank_mapping, left_on="item_id_a", right_on="cid", how="left")
+    clean = clean.join(
+        drugbank_mapping, left_on="item_id_a", right_on="cid", how="left",
+    )
 
     # Select and rename columns
     result = clean.select(
@@ -109,7 +126,9 @@ def parse_stitch(
         pl.lit(None).cast(pl.Utf8).alias("drug_name"),
     )
 
-    log.info(f"Result: {len(result):,} interactions, {result['gene'].n_unique():,} genes")
+    log.info(
+        f"Result: {len(result):,} interactions, {result['gene'].n_unique():,} genes",
+    )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     result.write_parquet(output_path)
@@ -121,8 +140,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, help="Config YAML")
     parser.add_argument("--actions", type=Path, help="STITCH actions.tsv.gz")
-    parser.add_argument("--chemical-sources", type=Path, help="STITCH chemical_sources.tsv.gz")
-    parser.add_argument("--protein-aliases", type=Path, help="STRING protein_aliases.txt.gz")
+    parser.add_argument(
+        "--chemical-sources", type=Path, help="STITCH chemical_sources.tsv.gz",
+    )
+    parser.add_argument(
+        "--protein-aliases", type=Path, help="STRING protein_aliases.txt.gz",
+    )
     parser.add_argument("--output", type=Path, help="Output parquet path")
     parser.add_argument("--min-score", type=int, help="Minimum STITCH score")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -134,7 +157,8 @@ def main():
     )
 
     config_path = (
-        args.config or Path(__file__).parent.parent.parent.parent / "configs" / "parsing.yaml"
+        args.config
+        or Path(__file__).parent.parent.parent.parent / "configs" / "parsing.yaml"
     )
     if config_path.exists():
         with config_path.open() as f:
@@ -146,11 +170,17 @@ def main():
         ct_inputs, thresholds, output_dir = {}, {}, Path()
 
     actions = args.actions or Path(ct_inputs.get("stitch_actions", ""))
-    chemical_sources = args.chemical_sources or Path(ct_inputs.get("stitch_chemical_sources", ""))
-    protein_aliases = args.protein_aliases or Path(ct_inputs.get("stitch_protein_aliases", ""))
+    chemical_sources = args.chemical_sources or Path(
+        ct_inputs.get("stitch_chemical_sources", ""),
+    )
+    protein_aliases = args.protein_aliases or Path(
+        ct_inputs.get("stitch_protein_aliases", ""),
+    )
     output = args.output or output_dir / "clinical_trials" / "stitch_gene_drug.parquet"
     min_score = (
-        args.min_score if args.min_score is not None else thresholds.get("stitch_min_score", 700)
+        args.min_score
+        if args.min_score is not None
+        else thresholds.get("stitch_min_score", 700)
     )
 
     parse_stitch(actions, chemical_sources, protein_aliases, output, min_score)
