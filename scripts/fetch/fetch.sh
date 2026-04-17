@@ -6,7 +6,7 @@ TOTAL=10
 step() { echo "[${1}/${TOTAL}] ${2}..."; }
 WGET="wget -q --show-progress --backups=0"
 
-BASE_DIR="${HOME}/ct-validation"
+BASE_DIR="${BASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "${BASE_DIR}"
 
 mkdir -p ./data/sources/gwas_catalog
