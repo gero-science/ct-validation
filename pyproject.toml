@@ -54,10 +54,7 @@ parse = [
     "cyvcf2",                        # clinvar.py
 ]
 fetch = [
-    "chembl-webresource-client",
-    "huggingface_hub",
-    "joblib",
-    "tqdm",
+    "huggingface_hub",               # `hf download` for TrialPanorama in fetch.sh
 ]
 genebass = [
     "hail",                          # requires Java 11; for genebass_preprocess.py only

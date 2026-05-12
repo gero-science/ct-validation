@@ -7,7 +7,7 @@ Parsed outputs needed to reproduce the benchmark are included in the data releas
 | Source | Version | Files | Download | Acquisition |
 |---|---|---|---|---|
 | GWAS Catalog | Release 2026-04-07, Header version v1.0.2 | `gwas-catalog-associations_ontology-annotated-full.zip` | https://ftp.ebi.ac.uk/pub/databases/gwas/releases/2026/04/07/ | `fetch.sh` |
-| ClinVar | 2026-04-04 | `clinvar.vcf.gz` | https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/ | `fetch.sh` |
+| ClinVar | 2026-04-04 | `clinvar.vcf.gz` | https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/archive_2.0/2026/ | `fetch.sh` |
 | Open Targets Platform | 25.12 | `association_by_datasource_direct/`, `target/` | https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/ | `fetch.sh` |
 | OMIM | 2022-06-09 | `genemap2.txt` | https://omim.org/downloads | Manual (requires OMIM account) |
 | Genebass | 500k | `results.mt` | `gs://ukbb-exome-public/500k/results/results.mt` | Manual (requires GCP account); preprocess with `scripts/fetch/genebass_preprocess.py` (requires Hail + Java 11) |

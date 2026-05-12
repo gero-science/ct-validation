@@ -74,7 +74,15 @@ def parse_phenotypes(phenotype_str: str, gene_symbol: str) -> list[dict]:
 
 
 def load_genemap(genemap_path: Path) -> pd.DataFrame:
-    """Load and parse OMIM genemap2.txt."""
+    """Load and parse OMIM genemap2.txt (plain or gzipped)."""
+    if not genemap_path.exists():
+        alt = (
+            genemap_path.with_suffix("")
+            if genemap_path.suffix == ".gz"
+            else genemap_path.with_suffix(genemap_path.suffix + ".gz")
+        )
+        if alt.exists():
+            genemap_path = alt
     log.info(f"Loading OMIM genemap2 from {genemap_path}")
     df = pd.read_csv(genemap_path, sep="\t", skiprows=3, dtype=str, na_values=[""])
     df.columns = [col.replace("# ", "") for col in df.columns]

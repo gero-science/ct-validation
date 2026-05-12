@@ -48,9 +48,12 @@ def run_script(
     *,
     verbose: bool = False,
     extra_args: list[str] | None = None,
+    config_path: Path | None = None,
 ) -> bool:
     """Run a script and return success status."""
     cmd = [sys.executable, str(script_path)]
+    if config_path is not None:
+        cmd.extend(["--config", str(config_path)])
     if verbose:
         cmd.append("-v")
     if extra_args:
@@ -76,6 +79,7 @@ def run_domain(
     aggregate: bool,
     verbose: bool,
     script_args: dict[str, list[str]] | None = None,
+    config_path: Path | None = None,
 ) -> bool:
     """Run scripts for a domain."""
     log.info(f"=== {domain.upper()} ===")
@@ -91,12 +95,21 @@ def run_domain(
             log.warning(f"Script not found: {scripts[source]}")
             continue
         extra = script_args.get(source)
-        if not run_script(scripts[source], verbose=verbose, extra_args=extra):
+        if not run_script(
+            scripts[source],
+            verbose=verbose,
+            extra_args=extra,
+            config_path=config_path,
+        ):
             return False
 
     # Run aggregation
     if aggregate and domain in AGGREGATE_SCRIPTS:
-        if not run_script(AGGREGATE_SCRIPTS[domain], verbose=verbose):
+        if not run_script(
+            AGGREGATE_SCRIPTS[domain],
+            verbose=verbose,
+            config_path=config_path,
+        ):
             return False
     return True
 
@@ -133,6 +146,7 @@ def main():
     else:
         log.warning(f"Config not found: {config_path}")
         run_cfg = {}
+        config_path = None
 
     # Parse CLI sources
     cli_sources = args.sources.split(",") if args.sources else None
@@ -149,6 +163,7 @@ def main():
             sources,
             aggregate=not args.skip_aggregate,
             verbose=args.verbose,
+            config_path=config_path,
         ):
             sys.exit(1)
 
@@ -164,6 +179,7 @@ def main():
             sources,
             aggregate=not args.skip_aggregate,
             verbose=args.verbose,
+            config_path=config_path,
         ):
             sys.exit(1)
 
