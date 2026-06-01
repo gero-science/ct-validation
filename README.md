@@ -37,7 +37,31 @@ results = ctv.validate(
     similarity_lookup="data/mappings/efo_similarity_lookup_0.5.parquet",
 )
 print(results)
-#   phase_label  n_yes   n_no  rr  rr_ci_lower  rr_ci_upper  ...
+#   phase_label  n_yes   n_no  rr  rr_ci_lower  rr_ci_upper  p_value  ...
+```
+
+Export annotated trials or matched-pair audit rows:
+
+```python
+enrichment, trials = ctv.validate(..., return_trials=True)
+enrichment, matched = ctv.validate(..., return_matched_pairs=True)
+enrichment, trials, matched = ctv.validate(
+    ...,
+    return_trials=True,
+    return_matched_pairs=True,
+)
+```
+
+Inspect how targets matched to clinical trials:
+
+```python
+matched = ctv.create_matched_pairs_df(
+    genetic_evidence="data/genetic_evidence/genetic_evidence.parquet",
+    clinical_trials="data/clinical_trials/gene_indication_max_phase.parquet",
+    similarity_pairs="data/mappings/efo_similarity_lookup_0.5.parquet",
+    similarity_threshold=0.8,
+)
+# columns: gene, ct_efo_id, ge_efo_id, similarity, match_type
 ```
 
 Batch mode — compare multiple evidence sources at once:
@@ -95,6 +119,10 @@ ct-validation \
     --clinical-trials ct.parquet \
     --targets gwas.parquet --targets clinvar.parquet --targets omim.parquet \
     -o results/
+
+# Save annotated trials and/or matched-pair audit rows
+ct-validation --config configs/default.yaml \
+    --save-trials --save-matched-pairs -o results/
 ```
 
 ### MCP server
@@ -105,7 +133,7 @@ ct-validation-mcp
 
 Exposes two tools for agent-based workflows:
 
-- `ct_validate` — compute phase-transition enrichment
+- `ct_validate` — compute phase-transition enrichment (includes `p_value`)
 - `expand_disease_set` — expand EFO IDs via semantic similarity
 
 ## Input schemas
@@ -130,6 +158,21 @@ All inputs accept Parquet files or pandas DataFrames (except `gene_universe`, wh
 | `rate_yes`, `rate_no`              | Progression rates                            |
 | `rr`, `rr_ci_lower`, `rr_ci_upper` | Risk ratio with 95% CI (Katz log method)     |
 | `or`, `or_ci_lower`, `or_ci_upper` | Odds ratio with 95% CI (Woolf logit method)  |
+| `p_value`                          | Two-sided Fisher's exact test p-value        |
+
+When either comparison group is empty (`n_yes=0` or `n_no=0`), `rr`, `or`, their confidence intervals, and `p_value` are undefined (`NaN`).
+
+### Matched-pairs export (optional)
+
+When `return_matched_pairs=True` (API) or `--save-matched-pairs` (CLI) is set, a separate audit table is returned/saved with:
+
+| Column       | Description                                              |
+| ------------ | -------------------------------------------------------- |
+| `gene`       | Gene symbol                                              |
+| `ct_efo_id`  | Disease on the clinical trial row                        |
+| `ge_efo_id`  | Supporting genetic-evidence disease                      |
+| `similarity` | Match score (`1.0` for exact matches)                    |
+| `match_type` | `exact` when `ct_efo_id == ge_efo_id`, else `similarity` |
 
 ## Enrichment logic
 
@@ -139,7 +182,7 @@ For each phase transition, target-indication pairs that reached at least the sta
 RR = (x_yes / n_yes) / (x_no / n_no)
 ```
 
-A risk ratio greater than one indicates that genetically supported pairs are more likely to progress. When a similarity lookup is provided, a pair (gene, disease) is considered supported if there exists evidence (gene, disease') with similarity above the threshold (default 0.8).
+A risk ratio greater than one indicates that genetically supported pairs are more likely to progress. When a similarity lookup is provided, a pair (gene, disease) is considered supported if there exists evidence (gene, disease') with similarity above the threshold (default 0.8). Similarity pairs may be stored in either orientation; matching searches both directions.
 
 ### Prioritized mode
 
@@ -189,6 +232,25 @@ python scripts/parse/run_parsing.py
 ## Configuration
 
 See `configs/default.yaml` for validation settings and `configs/parsing.yaml` for data source paths. All config values can be overridden via CLI arguments.
+
+Output options in `configs/default.yaml`:
+
+```yaml
+output:
+  dir: "results/"
+  save_trials: false
+  save_matched_pairs: false
+```
+
+## Development
+
+CI runs on push/PR to `main` via GitHub Actions (Python 3.11–3.13, `ruff check`, `pytest`).
+
+```bash
+pip install -e ".[dev,mcp]"
+ruff check src tests
+pytest tests/ -v
+```
 
 ## License
 
