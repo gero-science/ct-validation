@@ -24,6 +24,7 @@ class Output:
 
     dir: Path | None = None
     save_trials: bool = False
+    save_matched_pairs: bool = False
 
 
 @dataclass

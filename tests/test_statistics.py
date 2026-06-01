@@ -3,7 +3,29 @@
 import math
 
 import pytest
-from ct_validation.validation.statistics import katz_ci_risk_ratio, woolf_ci_odds_ratio
+from ct_validation.validation.statistics import (
+    fisher_exact_pvalue,
+    katz_ci_risk_ratio,
+    woolf_ci_odds_ratio,
+)
+
+
+def test_fisher_exact_equal_rates():
+    """p-value is high when both groups have the same success rate."""
+    p_value = fisher_exact_pvalue(50, 100, 50, 100)
+    assert p_value == pytest.approx(1.0, abs=1e-9)
+
+
+def test_fisher_exact_enrichment_signal():
+    """p-value is low when group 1 has higher success rate."""
+    p_value = fisher_exact_pvalue(80, 100, 40, 100)
+    assert p_value < 0.05
+
+
+def test_fisher_exact_empty_group_returns_nan():
+    """p-value is undefined when either group is empty."""
+    assert math.isnan(fisher_exact_pvalue(0, 0, 50, 100))
+    assert math.isnan(fisher_exact_pvalue(10, 10, 0, 0))
 
 
 def test_rr_equal_rates():

@@ -90,6 +90,7 @@ def ct_validate(
         - n_yes, n_no, x_yes, x_no, rate_yes, rate_no
         - rr, rr_ci_lower, rr_ci_upper (risk ratio with 95% CI)
         - or, or_ci_lower, or_ci_upper (odds ratio with 95% CI)
+        - p_value (two-sided Fisher's exact test)
     """
     ct_input = _to_input(clinical_trials, "clinical_trials")
     targets_input = _to_input(targets, "targets")

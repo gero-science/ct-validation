@@ -108,6 +108,26 @@ def test_cli_save_trials(runner, tmp_config_yaml, tmp_path):
     assert (output_dir / "annotated_trials.parquet").exists()
 
 
+def test_cli_save_matched_pairs(runner, tmp_config_yaml, tmp_path):
+    """--save-matched-pairs flag produces matched_pairs file."""
+    output_dir = tmp_path / "cli_output"
+
+    result = runner.invoke(
+        cli,
+        [
+            "--config",
+            str(tmp_config_yaml),
+            "--output-dir",
+            str(output_dir),
+            "--save-matched-pairs",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert (output_dir / "enrichment_results.parquet").exists()
+    assert (output_dir / "matched_pairs.parquet").exists()
+
+
 def test_cli_prints_summary(runner, tmp_config_yaml, tmp_path):
     """CLI prints enrichment summary to stdout."""
     result = runner.invoke(
@@ -123,6 +143,7 @@ def test_cli_prints_summary(runner, tmp_config_yaml, tmp_path):
     assert result.exit_code == 0
     assert "Enrichment Results" in result.output
     assert "Phase" in result.output
+    assert "p-value" in result.output
 
 
 def test_cli_phase_transitions(runner, tmp_config_yaml, tmp_path):

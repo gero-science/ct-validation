@@ -11,6 +11,7 @@ from ct_validation.plotting import forest_plot
 from ct_validation.validation import (
     EnrichmentResult,
     calculate_enrichment,
+    create_matched_pairs_df,
     create_matched_pairs_set,
     get_expanded_disease_set,
     katz_ci_risk_ratio,
@@ -24,6 +25,7 @@ __all__ = [
     "Config",
     "EnrichmentResult",
     "calculate_enrichment",
+    "create_matched_pairs_df",
     "create_matched_pairs_set",
     "forest_plot",
     "get_expanded_disease_set",

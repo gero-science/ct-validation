@@ -102,6 +102,41 @@ def test_validate_return_trials(clinical_trials_df, genetic_evidence_df, similar
     assert "has_genetic_evidence" in trials.columns
 
 
+def test_validate_return_matched_pairs(clinical_trials_df, genetic_evidence_df, similarity_lookup_df):
+    """return_matched_pairs=True returns match audit DataFrame."""
+    enrichment, matched = validate(
+        clinical_trials=clinical_trials_df,
+        targets=genetic_evidence_df,
+        similarity_lookup=similarity_lookup_df,
+        similarity_threshold=0.8,
+        return_matched_pairs=True,
+    )
+
+    assert isinstance(enrichment, pd.DataFrame)
+    assert isinstance(matched, pd.DataFrame)
+    assert "p_value" in enrichment.columns
+    assert {"gene", "ct_efo_id", "ge_efo_id", "similarity", "match_type"}.issubset(matched.columns)
+    assert len(matched) > 0
+
+
+def test_validate_return_trials_and_matched_pairs(
+    clinical_trials_df, genetic_evidence_df, similarity_lookup_df
+):
+    """Both optional outputs are returned in order."""
+    enrichment, trials, matched = validate(
+        clinical_trials=clinical_trials_df,
+        targets=genetic_evidence_df,
+        similarity_lookup=similarity_lookup_df,
+        similarity_threshold=0.8,
+        return_trials=True,
+        return_matched_pairs=True,
+    )
+
+    assert isinstance(enrichment, pd.DataFrame)
+    assert isinstance(trials, pd.DataFrame)
+    assert isinstance(matched, pd.DataFrame)
+
+
 def test_validate_missing_required_raises():
     """Missing required args raises ValueError."""
     with pytest.raises(ValueError, match="required"):

@@ -10,7 +10,7 @@ from ct_validation.config import load_config
 from ct_validation.config.schema import DEFAULT_PHASE_TRANSITIONS, Config, Thresholds
 from ct_validation.data.schema import CLINICAL_TRIALS, GENETIC_EVIDENCE, SIMILARITY_LOOKUP
 from ct_validation.validation.enrichment import calculate_all_enrichments
-from ct_validation.validation.matching import create_matched_pairs_set
+from ct_validation.validation.matching import create_matched_pairs_df, create_matched_pairs_set
 
 _DataInput = pd.DataFrame | str | Path
 
@@ -142,6 +142,25 @@ def _prepare_clinical_trials(
     return ct.drop(columns=["_has_baseline"])
 
 
+def _pack_validation_result(
+    enrichment: pd.DataFrame,
+    trials: pd.DataFrame | None,
+    matched_pairs: pd.DataFrame | None,
+    *,
+    return_trials: bool,
+    return_matched_pairs: bool,
+) -> pd.DataFrame | tuple:
+    """Build validate() return value from optional extras."""
+    if not return_trials and not return_matched_pairs:
+        return enrichment
+    parts: list[pd.DataFrame] = [enrichment]
+    if return_trials:
+        parts.append(trials)
+    if return_matched_pairs:
+        parts.append(matched_pairs)
+    return tuple(parts)
+
+
 def validate(
     config: Config | str | Path | None = None,
     *,
@@ -153,7 +172,8 @@ def validate(
     similarity_threshold: float | None = None,
     phase_transitions: list[tuple[int, int]] | None = None,
     return_trials: bool = False,
-) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame] | list:
+    return_matched_pairs: bool = False,
+) -> pd.DataFrame | tuple | list:
     """
     Run validation pipeline.
 
@@ -191,9 +211,12 @@ def validate(
         rate_yes, rate_no: Progression rates.
         rr, rr_ci_lower, rr_ci_upper: Risk ratio with 95% CI (Katz log method).
         or, or_ci_lower, or_ci_upper: Odds ratio with 95% CI (Woolf logit method).
+        p_value: Two-sided Fisher's exact test p-value.
 
     Returns:
-        Single targets: DataFrame (or tuple with trials_df if return_trials=True).
+        Single targets: enrichment DataFrame, or tuple with optional extras in order:
+        (enrichment), (enrichment, trials), (enrichment, matched_pairs),
+        or (enrichment, trials, matched_pairs).
         List of targets: list of the above, one per target set.
     """
     batch = isinstance(targets, list)
@@ -238,14 +261,26 @@ def validate(
 
     results = []
     for t in p.targets_list:
-        target_pairs = create_matched_pairs_set(
-            genetic_evidence=t,
-            clinical_trials=p.clinical_trials,
-            similarity_pairs=p.similarity_lookup,
-            similarity_threshold=p.similarity_threshold,
-            gene_universe=gu,
-            con=con,
-        )
+        if return_matched_pairs:
+            matched_pairs_df = create_matched_pairs_df(
+                genetic_evidence=t,
+                clinical_trials=p.clinical_trials,
+                similarity_pairs=p.similarity_lookup,
+                similarity_threshold=p.similarity_threshold,
+                gene_universe=gu,
+                con=con,
+            )
+            target_pairs = set(zip(matched_pairs_df["gene"], matched_pairs_df["ct_efo_id"]))
+        else:
+            matched_pairs_df = None
+            target_pairs = create_matched_pairs_set(
+                genetic_evidence=t,
+                clinical_trials=p.clinical_trials,
+                similarity_pairs=p.similarity_lookup,
+                similarity_threshold=p.similarity_threshold,
+                gene_universe=gu,
+                con=con,
+            )
 
         ct = _prepare_clinical_trials(
             clinical_trials=p.clinical_trials,
@@ -259,7 +294,15 @@ def validate(
             phase_transitions=p.phase_transitions,
         )
 
-        results.append((enrichment, ct) if return_trials else enrichment)
+        results.append(
+            _pack_validation_result(
+                enrichment,
+                ct,
+                matched_pairs_df,
+                return_trials=return_trials,
+                return_matched_pairs=return_matched_pairs,
+            ),
+        )
 
     con.close()
 
