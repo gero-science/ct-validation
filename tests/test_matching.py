@@ -1,7 +1,12 @@
 """Tests for similarity matching."""
 
 import pandas as pd
-from ct_validation.validation.matching import create_matched_pairs_set, get_expanded_disease_set
+import pytest
+from ct_validation.validation.matching import (
+    create_matched_pairs_df,
+    create_matched_pairs_set,
+    get_expanded_disease_set,
+)
 
 
 def test_exact_match_found():
@@ -20,6 +25,17 @@ def test_similar_match_found():
     ct = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:002"], "max_phase": [2]})
     ge = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:001"]})
     sim = pd.DataFrame({"efo_id_1": ["EFO:001"], "efo_id_2": ["EFO:002"], "similarity": [0.9]})
+
+    result = create_matched_pairs_set(ge, ct, sim, similarity_threshold=0.8)
+
+    assert ("GENE1", "EFO:002") in result
+
+
+def test_similar_match_found_reverse_pair():
+    """Similarity pairs stored in reverse orientation still match."""
+    ct = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:002"], "max_phase": [2]})
+    ge = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:001"]})
+    sim = pd.DataFrame({"efo_id_1": ["EFO:002"], "efo_id_2": ["EFO:001"], "similarity": [0.9]})
 
     result = create_matched_pairs_set(ge, ct, sim, similarity_threshold=0.8)
 
@@ -122,6 +138,21 @@ def test_expand_diseases_with_similarity():
     result = get_expanded_disease_set(["EFO:001"], sim, similarity_threshold=0.8)
 
     assert result == {"EFO:001", "EFO:002", "EFO:003"}
+
+
+def test_expand_diseases_reverse_pair():
+    """Expansion works when the input disease appears as efo_id_2."""
+    sim = pd.DataFrame(
+        {
+            "efo_id_1": ["EFO:002"],
+            "efo_id_2": ["EFO:001"],
+            "similarity": [0.9],
+        }
+    )
+
+    result = get_expanded_disease_set(["EFO:001"], sim, similarity_threshold=0.8)
+
+    assert result == {"EFO:001", "EFO:002"}
 
 
 def test_expand_diseases_excludes_below_threshold():
@@ -259,3 +290,44 @@ def test_none_similarity_gene_universe_filter():
 
     assert ("GENE1", "EFO:001") in result
     assert ("GENE2", "EFO:001") not in result
+
+
+# Tests for create_matched_pairs_df
+
+
+def test_matched_pairs_df_exact_match_columns():
+    """Exact matching returns expected audit columns."""
+    ct = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:001"], "max_phase": [2]})
+    ge = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:001"]})
+
+    result = create_matched_pairs_df(ge, ct, similarity_pairs=None, similarity_threshold=0.8)
+
+    assert list(result.columns) == ["gene", "ct_efo_id", "ge_efo_id", "similarity", "match_type"]
+    assert result.iloc[0]["match_type"] == "exact"
+    assert result.iloc[0]["similarity"] == pytest.approx(1.0)
+
+
+def test_matched_pairs_df_similarity_match():
+    """Similarity matching records the supporting GE disease ID."""
+    ct = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:002"], "max_phase": [2]})
+    ge = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:001"]})
+    sim = pd.DataFrame({"efo_id_1": ["EFO:001"], "efo_id_2": ["EFO:002"], "similarity": [0.9]})
+
+    result = create_matched_pairs_df(ge, ct, sim, similarity_threshold=0.8)
+
+    assert len(result) == 1
+    assert result.iloc[0]["ct_efo_id"] == "EFO:002"
+    assert result.iloc[0]["ge_efo_id"] == "EFO:001"
+    assert result.iloc[0]["match_type"] == "similarity"
+
+
+def test_matched_pairs_df_reverse_pair():
+    """Reverse-oriented similarity rows are still exported."""
+    ct = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:002"], "max_phase": [2]})
+    ge = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:001"]})
+    sim = pd.DataFrame({"efo_id_1": ["EFO:002"], "efo_id_2": ["EFO:001"], "similarity": [0.9]})
+
+    result = create_matched_pairs_df(ge, ct, sim, similarity_threshold=0.8)
+
+    assert len(result) == 1
+    assert result.iloc[0]["ge_efo_id"] == "EFO:001"

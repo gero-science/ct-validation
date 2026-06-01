@@ -66,6 +66,50 @@ def test_no_matching_rows_returns_zero_counts():
     assert result.n_no == 0
 
 
+def test_empty_comparison_group_returns_nan_effect_sizes():
+    """RR/OR are undefined when either comparison group is empty."""
+    all_with_ge = pd.DataFrame(
+        {
+            "max_phase": [2, 2, 2],
+            "has_genetic_evidence": [True, True, True],
+        }
+    )
+    all_without_ge = pd.DataFrame(
+        {
+            "max_phase": [2, 2, 2],
+            "has_genetic_evidence": [False, False, False],
+        }
+    )
+
+    with_ge_only = calculate_enrichment(all_with_ge, phase_from=1, phase_to=3)
+    without_ge_only = calculate_enrichment(all_without_ge, phase_from=1, phase_to=3)
+    no_eligible = calculate_enrichment(all_with_ge, phase_from=3, phase_to=4)
+
+    assert pd.isna(with_ge_only.rr)
+    assert pd.isna(with_ge_only.or_)
+    assert pd.isna(with_ge_only.p_value)
+    assert pd.isna(without_ge_only.rr)
+    assert pd.isna(without_ge_only.or_)
+    assert pd.isna(without_ge_only.p_value)
+    assert pd.isna(no_eligible.rr)
+    assert pd.isna(no_eligible.or_)
+    assert pd.isna(no_eligible.p_value)
+
+
+def test_enrichment_includes_p_value(enrichment_input_df):
+    """Enrichment results include a Fisher's exact test p-value."""
+    result = calculate_enrichment(enrichment_input_df, phase_from=1, phase_to=2)
+
+    assert 0.0 <= result.p_value <= 1.0
+
+
+def test_all_enrichments_includes_p_value_column(enrichment_input_df):
+    """Batch enrichment output includes p_value column."""
+    result = calculate_all_enrichments(enrichment_input_df, [(1, 2)])
+
+    assert "p_value" in result.columns
+
+
 def test_result_to_dict():
     """EnrichmentResult.to_dict() returns expected keys."""
     result = EnrichmentResult(
@@ -84,6 +128,7 @@ def test_result_to_dict():
         or_=1.0,
         or_ci_lower=0.7,
         or_ci_upper=1.3,
+        p_value=0.42,
     )
     d = result.to_dict()
 
@@ -93,6 +138,7 @@ def test_result_to_dict():
     assert d["rr"] == 1.0
     assert d["or"] == 1.0
     assert d["or_ci_lower"] == 0.7
+    assert d["p_value"] == 0.42
 
 
 def test_rates_between_zero_and_one(enrichment_input_df):

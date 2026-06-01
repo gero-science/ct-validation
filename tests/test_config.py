@@ -44,6 +44,7 @@ def test_output_defaults():
 
     assert output.dir is None
     assert output.save_trials is False
+    assert output.save_matched_pairs is False
 
 
 @pytest.mark.parametrize(

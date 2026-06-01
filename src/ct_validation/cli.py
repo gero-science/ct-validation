@@ -1,9 +1,11 @@
 """Command-line interface for ct-validation."""
 
+import math
 from enum import Enum
 from pathlib import Path
 from typing import Annotated
 
+import pandas as pd
 import typer
 
 from ct_validation import validate
@@ -69,6 +71,13 @@ def main(
             help="Save annotated trials DataFrame alongside enrichment results.",
         ),
     ] = False,
+    save_matched_pairs: Annotated[  # noqa: FBT002
+        bool,
+        typer.Option(
+            "--save-matched-pairs",
+            help="Save target match details (gene, ct_efo_id, ge_efo_id, similarity).",
+        ),
+    ] = False,
     output_format: Annotated[
         OutputFormat,
         typer.Option("--format", help="Output format."),
@@ -91,6 +100,7 @@ def main(
         rate_yes, rate_no       Progression rates
         rr, rr_ci_lower/upper   Risk ratio with 95% CI
         or, or_ci_lower/upper   Odds ratio with 95% CI
+        p_value                 Two-sided Fisher's exact test p-value
 
     Examples:
         ct-validation --config config.yaml
@@ -106,9 +116,11 @@ def main(
     if output_dir is None:
         output_dir = config.output.dir if config and config.output.dir else Path()
 
-    # Resolve save_trials from config if not set via flag
+    # Resolve save flags from config if not set via CLI
     if not save_trials and config:
         save_trials = config.output.save_trials
+    if not save_matched_pairs and config:
+        save_matched_pairs = config.output.save_matched_pairs
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -136,6 +148,7 @@ def main(
         similarity_threshold=similarity_threshold,
         phase_transitions=parsed_transitions,
         return_trials=save_trials,
+        return_matched_pairs=save_matched_pairs,
     )
 
     # Normalize to list for uniform handling
@@ -144,34 +157,76 @@ def main(
 
     for r, label in zip(results, labels):
         suffix = f"_{label}" if label else ""
-
-        if save_trials:
-            enrichment_df, trials_df = r
-        else:
-            enrichment_df = r
+        enrichment_df, trials_df, matched_df = _unpack_validation_result(
+            r,
+            save_trials=save_trials,
+            save_matched_pairs=save_matched_pairs,
+        )
 
         # Save results
         enrichment_path = output_dir / f"enrichment_results{suffix}.{output_format.value}"
         _save_df(enrichment_df, enrichment_path, output_format)
         print(f"Saved enrichment results to {enrichment_path}")
 
-        if save_trials:
+        if save_trials and trials_df is not None:
             trials_path = output_dir / f"annotated_trials{suffix}.{output_format.value}"
             _save_df(trials_df, trials_path, output_format)
             print(f"Saved annotated trials to {trials_path}")
 
+        if save_matched_pairs and matched_df is not None:
+            matched_path = output_dir / f"matched_pairs{suffix}.{output_format.value}"
+            _save_df(matched_df, matched_path, output_format)
+            print(f"Saved matched pairs to {matched_path}")
+
         # Print summary
         header = f"\nEnrichment Results ({label}):" if label else "\nEnrichment Results:"
         print(header)
-        print("-" * 60)
-        print(f"{'Phase':<12} {'n_yes':>8} {'n_no':>10} {'RR':>8} {'95% CI':<20}")
-        print("-" * 60)
+        print("-" * 72)
+        print(f"{'Phase':<12} {'n_yes':>8} {'n_no':>10} {'RR':>8} {'95% CI':<20} {'p-value':>10}")
+        print("-" * 72)
         for _, row in enrichment_df.iterrows():
-            ci = f"[{row['rr_ci_lower']:.3f}, {row['rr_ci_upper']:.3f}]"
+            ci = _format_ci(row["rr_ci_lower"], row["rr_ci_upper"])
             print(
                 f"{row['phase_label']:<12} {row['n_yes']:>8} {row['n_no']:>10} "
-                f"{row['rr']:>8.3f} {ci:<20}",
+                f"{_format_number(row['rr']):>8} {ci:<20} {_format_number(row['p_value'], width=10):>10}",
             )
+
+
+def _unpack_validation_result(
+    result: pd.DataFrame | tuple,
+    *,
+    save_trials: bool,
+    save_matched_pairs: bool,
+) -> tuple[pd.DataFrame, pd.DataFrame | None, pd.DataFrame | None]:
+    """Split validate() output into enrichment and optional extras."""
+    if not save_trials and not save_matched_pairs:
+        return result, None, None
+
+    parts = result if isinstance(result, tuple) else (result,)
+    enrichment_df = parts[0]
+    offset = 1
+    trials_df = parts[offset] if save_trials else None
+    if save_trials:
+        offset += 1
+    matched_df = parts[offset] if save_matched_pairs else None
+    return enrichment_df, trials_df, matched_df
+
+
+def _format_number(value: float, *, width: int = 8, precision: int = 3) -> str:
+    """Format numeric output, using N/A for undefined values."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return "N/A".rjust(width)
+    return f"{value:>{width}.{precision}f}"
+
+
+def _format_ci(lower: float, upper: float) -> str:
+    """Format a confidence interval, handling undefined bounds."""
+    if any(
+        v is None or (isinstance(v, float) and math.isnan(v))
+        for v in (lower, upper)
+    ):
+        return "N/A"
+    return f"[{lower:.3f}, {upper:.3f}]"
 
 
 def _save_df(df, path: Path, fmt: OutputFormat) -> None:

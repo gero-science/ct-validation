@@ -131,6 +131,7 @@ def test_ct_validate_inline_has_expected_keys():
         "rr",
         "rr_ci_lower",
         "rr_ci_upper",
+        "p_value",
     }
     assert expected_keys.issubset(result[0].keys())
 

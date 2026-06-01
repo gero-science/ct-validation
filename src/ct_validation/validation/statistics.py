@@ -4,6 +4,40 @@ import numpy as np
 from scipy import stats
 
 
+def fisher_exact_pvalue(
+    a: int,
+    n1: int,
+    c: int,
+    n2: int,
+) -> float:
+    """
+    Two-sided Fisher's exact test p-value for a 2x2 contingency table.
+
+    Parameters
+    ----------
+    a : int
+        Successes in group 1 (with genetic evidence)
+    n1 : int
+        Total in group 1
+    c : int
+        Successes in group 2 (without genetic evidence)
+    n2 : int
+        Total in group 2
+
+    Returns
+    -------
+    float
+        Two-sided p-value, or NaN when either group is empty
+    """
+    if n1 == 0 or n2 == 0:
+        return np.nan
+
+    b = n1 - a
+    d = n2 - c
+    _, p_value = stats.fisher_exact([[a, b], [c, d]], alternative="two-sided")
+    return float(p_value)
+
+
 def katz_ci_risk_ratio(
     a: int,
     n1: int,

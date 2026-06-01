@@ -24,6 +24,8 @@ def load_config(path: str | Path) -> Config:
         output_kwargs["dir"] = Path(output_raw["dir"])
     if "save_trials" in output_raw:
         output_kwargs["save_trials"] = output_raw["save_trials"]
+    if "save_matched_pairs" in output_raw:
+        output_kwargs["save_matched_pairs"] = output_raw["save_matched_pairs"]
     output = Output(**output_kwargs)
 
     # Parse thresholds - dataclass handles defaults

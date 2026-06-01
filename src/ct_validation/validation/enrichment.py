@@ -2,10 +2,15 @@
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from ct_validation.config.schema import phase_label
-from ct_validation.validation.statistics import katz_ci_risk_ratio, woolf_ci_odds_ratio
+from ct_validation.validation.statistics import (
+    fisher_exact_pvalue,
+    katz_ci_risk_ratio,
+    woolf_ci_odds_ratio,
+)
 
 
 @dataclass
@@ -31,6 +36,8 @@ class EnrichmentResult:
     or_: float
     or_ci_lower: float
     or_ci_upper: float
+    # Fisher's exact test (two-sided)
+    p_value: float
 
     def to_dict(self) -> dict:
         """Convert to dictionary for DataFrame creation."""
@@ -50,6 +57,7 @@ class EnrichmentResult:
             "or": self.or_,
             "or_ci_lower": self.or_ci_lower,
             "or_ci_upper": self.or_ci_upper,
+            "p_value": self.p_value,
         }
 
 
@@ -103,11 +111,15 @@ def calculate_enrichment(
     rate_yes = x_yes / n_yes if n_yes > 0 else 0.0
     rate_no = x_no / n_no if n_no > 0 else 0.0
 
-    # Calculate risk ratio with CI
-    rr, rr_lower, rr_upper = katz_ci_risk_ratio(x_yes, n_yes, x_no, n_no)
-
-    # Calculate odds ratio with CI
-    or_, or_lower, or_upper = woolf_ci_odds_ratio(x_yes, n_yes, x_no, n_no)
+    # RR/OR require both comparison groups; continuity correction is not meaningful here
+    if n_yes == 0 or n_no == 0:
+        rr = rr_lower = rr_upper = np.nan
+        or_ = or_lower = or_upper = np.nan
+        p_value = np.nan
+    else:
+        rr, rr_lower, rr_upper = katz_ci_risk_ratio(x_yes, n_yes, x_no, n_no)
+        or_, or_lower, or_upper = woolf_ci_odds_ratio(x_yes, n_yes, x_no, n_no)
+        p_value = fisher_exact_pvalue(x_yes, n_yes, x_no, n_no)
 
     # Generate label
     label = phase_label(phase_from, phase_to)
@@ -128,6 +140,7 @@ def calculate_enrichment(
         or_=or_,
         or_ci_lower=or_lower,
         or_ci_upper=or_upper,
+        p_value=p_value,
     )
 
 
