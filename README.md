@@ -40,28 +40,21 @@ print(results)
 #   phase_label  n_yes   n_no  rr  rr_ci_lower  rr_ci_upper  p_value  ...
 ```
 
-Export annotated trials or matched-pair audit rows:
+Export annotated trials and/or matched-pair audit rows (returned in order):
 
 ```python
 enrichment, trials = ctv.validate(..., return_trials=True)
 enrichment, matched = ctv.validate(..., return_matched_pairs=True)
-enrichment, trials, matched = ctv.validate(
-    ...,
-    return_trials=True,
-    return_matched_pairs=True,
-)
+enrichment, trials, matched = ctv.validate(..., return_trials=True, return_matched_pairs=True)
 ```
 
-Inspect how targets matched to clinical trials:
+Or build the match-audit table directly (columns: `gene`, `ct_efo_id`, `ge_efo_id`, `similarity`, `match_type`):
 
 ```python
 matched = ctv.create_matched_pairs_df(
-    genetic_evidence="data/genetic_evidence/genetic_evidence.parquet",
-    clinical_trials="data/clinical_trials/gene_indication_max_phase.parquet",
-    similarity_pairs="data/mappings/efo_similarity_lookup_0.5.parquet",
+    genetic_evidence=..., clinical_trials=..., similarity_pairs=...,
     similarity_threshold=0.8,
 )
-# columns: gene, ct_efo_id, ge_efo_id, similarity, match_type
 ```
 
 Batch mode — compare multiple evidence sources at once:
@@ -244,12 +237,12 @@ output:
 
 ## Development
 
-CI runs on push/PR to `main` via GitHub Actions (Python 3.11–3.13, `ruff check`, `pytest`).
+CI runs on push/PR to `main` (Python 3.11–3.13, `ruff`, `pytest`):
 
 ```bash
-pip install -e ".[dev,mcp]"
-ruff check src tests
-pytest tests/ -v
+uv sync --extra mcp
+uv run ruff check src tests
+uv run pytest tests/ -v
 ```
 
 ## License
