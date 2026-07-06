@@ -2,6 +2,7 @@
 
 from ct_validation.validation.enrichment import EnrichmentResult, calculate_enrichment
 from ct_validation.validation.matching import (
+    check_similarity_lookup,
     create_matched_pairs_df,
     create_matched_pairs_set,
     get_expanded_disease_set,
@@ -15,6 +16,7 @@ from ct_validation.validation.statistics import (
 __all__ = [
     "EnrichmentResult",
     "calculate_enrichment",
+    "check_similarity_lookup",
     "create_matched_pairs_df",
     "create_matched_pairs_set",
     "fisher_exact_pvalue",

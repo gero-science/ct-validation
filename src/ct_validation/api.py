@@ -10,7 +10,11 @@ from ct_validation.config import load_config
 from ct_validation.config.schema import DEFAULT_PHASE_TRANSITIONS, Config, Thresholds
 from ct_validation.data.schema import CLINICAL_TRIALS, GENETIC_EVIDENCE, SIMILARITY_LOOKUP
 from ct_validation.validation.enrichment import calculate_all_enrichments
-from ct_validation.validation.matching import create_matched_pairs_df, create_matched_pairs_set
+from ct_validation.validation.matching import (
+    check_similarity_lookup,
+    create_matched_pairs_df,
+    create_matched_pairs_set,
+)
 
 _DataInput = pd.DataFrame | str | Path
 
@@ -173,6 +177,7 @@ def validate(
     phase_transitions: list[tuple[int, int]] | None = None,
     return_trials: bool = False,
     return_matched_pairs: bool = False,
+    check_similarity: bool = False,
 ) -> pd.DataFrame | tuple | list:
     """
     Run validation pipeline.
@@ -200,9 +205,17 @@ def validate(
             Pass a list of DataFrames/paths for batch validation.
         similarity_lookup: efo_id_1, efo_id_2, similarity (optional)
             Symmetric EFO semantic similarity pairs (diagonal has similarity=1.0).
-            If None, performs exact matching on (gene, efo_id) without expansion.
+            Matching probes a single orientation, so the table MUST be symmetric; pass
+            check_similarity=True to verify (or call check_similarity_lookup() once
+            yourself before a validation loop). If None, performs exact matching on
+            (gene, efo_id) without expansion.
         baseline_evidence: gene, efo_id (optional)
             Gene-indication pairs for baseline comparison in prioritized mode.
+        check_similarity: bool (default False)
+            When True and a similarity_lookup is given, assert it is symmetric (raising
+            if not) before matching. Off by default because the check scans the whole
+            lookup — for repeated calls, validate once with check_similarity_lookup()
+            and leave this False.
 
     Output Schema:
         phase_from, phase_to: Phase transition (e.g., 1→2, 2→3).
@@ -239,6 +252,8 @@ def validate(
         _validate_input(t, GENETIC_EVIDENCE, "targets")
     if p.similarity_lookup is not None:
         _validate_input(p.similarity_lookup, SIMILARITY_LOOKUP, "similarity_lookup")
+        if check_similarity:
+            check_similarity_lookup(p.similarity_lookup)
     if p.baseline_evidence is not None:
         _validate_input(p.baseline_evidence, GENETIC_EVIDENCE, "baseline_evidence")
 

@@ -135,7 +135,7 @@ Exposes two tools for agent-based workflows:
 | ------------------- | ------------------------------------ | -------------------------------------------------- |
 | `clinical_trials`   | `gene`, `efo_id`, `max_phase`        | Target-indication pairs with highest phase reached |
 | `targets`           | `gene`, `efo_id`                     | Gene-indication pairs with supporting evidence     |
-| `similarity_lookup` | `efo_id_1`, `efo_id_2`, `similarity` | Pairwise EFO similarity (optional)                 |
+| `similarity_lookup` | `efo_id_1`, `efo_id_2`, `similarity` | Pairwise EFO similarity, **symmetric with diagonal** (optional) |
 | `baseline_evidence` | `gene`, `efo_id`                     | Baseline evidence for prioritized mode (optional)  |
 | `gene_universe`     | one gene per line (text file)         | Restrict analysis to these genes (optional)        |
 
@@ -175,7 +175,7 @@ For each phase transition, target-indication pairs that reached at least the sta
 RR = (x_yes / n_yes) / (x_no / n_no)
 ```
 
-A risk ratio greater than one indicates that genetically supported pairs are more likely to progress. When a similarity lookup is provided, a pair (gene, disease) is considered supported if there exists evidence (gene, disease') with similarity above the threshold (default 0.8). Similarity pairs may be stored in either orientation; matching searches both directions.
+A risk ratio greater than one indicates that genetically supported pairs are more likely to progress. When a similarity lookup is provided, a pair (gene, disease) is considered supported if there exists evidence (gene, disease') with similarity above the threshold (default 0.8). Matching probes a single orientation of each pair, so the lookup **must be symmetric** — every pair `(a, b)` stored as `(b, a)` too, plus a diagonal (self-similarity=1.0). Validate one with `check_similarity_lookup(sim)` (or pass `check_similarity=True` to `validate()`); it raises rather than silently dropping half of each disease neighbourhood.
 
 ### Prioritized mode
 

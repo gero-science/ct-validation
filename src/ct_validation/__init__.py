@@ -11,6 +11,7 @@ from ct_validation.plotting import forest_plot
 from ct_validation.validation import (
     EnrichmentResult,
     calculate_enrichment,
+    check_similarity_lookup,
     create_matched_pairs_df,
     create_matched_pairs_set,
     get_expanded_disease_set,
@@ -18,13 +19,14 @@ from ct_validation.validation import (
     woolf_ci_odds_ratio,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "PHASE_NAMES",
     "Config",
     "EnrichmentResult",
     "calculate_enrichment",
+    "check_similarity_lookup",
     "create_matched_pairs_df",
     "create_matched_pairs_set",
     "forest_plot",

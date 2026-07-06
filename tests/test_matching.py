@@ -3,6 +3,7 @@
 import pandas as pd
 import pytest
 from ct_validation.validation.matching import (
+    check_similarity_lookup,
     create_matched_pairs_df,
     create_matched_pairs_set,
     get_expanded_disease_set,
@@ -31,15 +32,12 @@ def test_similar_match_found():
     assert ("GENE1", "EFO:002") in result
 
 
-def test_similar_match_found_reverse_pair():
-    """Similarity pairs stored in reverse orientation still match."""
-    ct = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:002"], "max_phase": [2]})
-    ge = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:001"]})
+def test_check_similarity_lookup_rejects_asymmetric():
+    """A one-directional (non-symmetric) lookup fails validation loudly."""
     sim = pd.DataFrame({"efo_id_1": ["EFO:002"], "efo_id_2": ["EFO:001"], "similarity": [0.9]})
 
-    result = create_matched_pairs_set(ge, ct, sim, similarity_threshold=0.8)
-
-    assert ("GENE1", "EFO:002") in result
+    with pytest.raises(ValueError, match="not symmetric"):
+        check_similarity_lookup(sim, require_diagonal=False)
 
 
 def test_below_threshold_excluded():
@@ -140,19 +138,18 @@ def test_expand_diseases_with_similarity():
     assert result == {"EFO:001", "EFO:002", "EFO:003"}
 
 
-def test_expand_diseases_reverse_pair():
-    """Expansion works when the input disease appears as efo_id_2."""
+def test_check_similarity_lookup_accepts_symmetric():
+    """A symmetric lookup with a full diagonal passes validation."""
     sim = pd.DataFrame(
         {
-            "efo_id_1": ["EFO:002"],
-            "efo_id_2": ["EFO:001"],
-            "similarity": [0.9],
+            "efo_id_1": ["EFO:001", "EFO:002", "EFO:001", "EFO:002"],
+            "efo_id_2": ["EFO:001", "EFO:002", "EFO:002", "EFO:001"],
+            "similarity": [1.0, 1.0, 0.9, 0.9],
         }
     )
 
-    result = get_expanded_disease_set(["EFO:001"], sim, similarity_threshold=0.8)
-
-    assert result == {"EFO:001", "EFO:002"}
+    # Should not raise.
+    assert check_similarity_lookup(sim) is None
 
 
 def test_expand_diseases_excludes_below_threshold():
@@ -321,13 +318,18 @@ def test_matched_pairs_df_similarity_match():
     assert result.iloc[0]["match_type"] == "similarity"
 
 
-def test_matched_pairs_df_reverse_pair():
-    """Reverse-oriented similarity rows are still exported."""
-    ct = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:002"], "max_phase": [2]})
-    ge = pd.DataFrame({"gene": ["GENE1"], "efo_id": ["EFO:001"]})
-    sim = pd.DataFrame({"efo_id_1": ["EFO:002"], "efo_id_2": ["EFO:001"], "similarity": [0.9]})
+def test_check_similarity_lookup_requires_diagonal():
+    """Symmetric off-diagonal pairs still fail if the diagonal is missing (default)."""
+    sim = pd.DataFrame(
+        {
+            "efo_id_1": ["EFO:001", "EFO:002"],
+            "efo_id_2": ["EFO:002", "EFO:001"],
+            "similarity": [0.9, 0.9],
+        }
+    )
 
-    result = create_matched_pairs_df(ge, ct, sim, similarity_threshold=0.8)
+    with pytest.raises(ValueError, match="diagonal"):
+        check_similarity_lookup(sim)
 
-    assert len(result) == 1
-    assert result.iloc[0]["ge_efo_id"] == "EFO:001"
+    # ...but passes when the diagonal requirement is waived.
+    assert check_similarity_lookup(sim, require_diagonal=False) is None
