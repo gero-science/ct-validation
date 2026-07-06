@@ -29,7 +29,9 @@ def get_expanded_disease_set(
     Returns set of efo_ids: input diseases + similar diseases (similarity >= threshold).
     If threshold >= 1.0, returns only input diseases (no expansion).
 
-    Useful for filtering clinical trials to a disease neighborhood before validation.
+    The lookup is expected to be symmetric (see check_similarity_lookup); expansion
+    probes a single orientation. Useful for filtering clinical trials to a disease
+    neighborhood before validation.
     """
     direct_set = set(efo_ids)
 
@@ -191,14 +193,17 @@ def check_similarity_lookup(
 
     Matching probes a single orientation of each pair (for speed), which is correct
     only when the table is symmetric: every off-diagonal pair ``(a, b)`` must also be
-    stored as ``(b, a)``. When ``require_diagonal`` is set, every term must additionally
-    have a self-similarity row ``(a, a)`` (exact matching relies on it). Run this once
-    per lookup — after loading it, before a validation loop — so a malformed table fails
-    loudly instead of letting matching silently drop half the disease neighbourhood.
+    stored as ``(b, a)``. Only key presence is checked in both orientations, not
+    similarity-value equality — the generating cosine metric is symmetric by
+    construction. When ``require_diagonal`` is set, every term must additionally have a
+    self-similarity row ``(a, a)`` with similarity 1.0, which exact matching relies on.
+    Run this once per lookup — after loading it, before a validation loop — so a
+    malformed table fails loudly instead of letting matching silently drop half the
+    disease neighbourhood.
 
     Raises:
         ValueError: if the table is not symmetric, or (when ``require_diagonal``) any
-            term lacks a self-similarity row. The message lists a few offending entries.
+            term lacks a self-similarity=1.0 row. The message lists a few offending entries.
     """
     conn = duckdb.connect()
     try:
@@ -223,7 +228,10 @@ def check_similarity_lookup(
             )
 
         if require_diagonal:
-            # sql — terms that never appear in a self-similarity (a, a) row
+            # Exact matching relies on a full self-similarity (a, a, 1.0) row, so a
+            # sub-1.0 or absent diagonal is malformed. Checked as two cheap passes — a
+            # value predicate inside the anti-join below would drop it off the hash path.
+            # sql — terms with no (a, a) row at all
             missing_diagonal = conn.execute(
                 """
                 SELECT t.efo_id
@@ -232,10 +240,15 @@ def check_similarity_lookup(
                 LIMIT 5
                 """,
             ).fetchall()
-            if missing_diagonal:
-                examples = ", ".join(row[0] for row in missing_diagonal)
+            # sql — diagonal rows present but below the required self-similarity of 1.0
+            weak_diagonal = conn.execute(
+                "SELECT efo_id_1 FROM sim WHERE efo_id_1 = efo_id_2 AND similarity < 1.0 LIMIT 5",
+            ).fetchall()
+            bad_diagonal = missing_diagonal + weak_diagonal
+            if bad_diagonal:
+                examples = ", ".join(str(row[0]) for row in bad_diagonal)
                 raise ValueError(
-                    "similarity_lookup is missing diagonal (self-similarity) rows for some "
+                    "similarity_lookup is missing diagonal self-similarity=1.0 rows for some "
                     f"terms, which exact matching relies on, e.g. {examples}.",
                 )
     finally:

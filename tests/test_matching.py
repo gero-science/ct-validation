@@ -333,3 +333,17 @@ def test_check_similarity_lookup_requires_diagonal():
 
     # ...but passes when the diagonal requirement is waived.
     assert check_similarity_lookup(sim, require_diagonal=False) is None
+
+
+def test_check_similarity_lookup_rejects_weak_diagonal():
+    """A diagonal present but below 1.0 is malformed (would drop exact matches)."""
+    sim = pd.DataFrame(
+        {
+            "efo_id_1": ["EFO:001", "EFO:002", "EFO:001", "EFO:002"],
+            "efo_id_2": ["EFO:001", "EFO:002", "EFO:002", "EFO:001"],
+            "similarity": [0.5, 1.0, 0.9, 0.9],  # EFO:001 self-similarity < 1.0
+        }
+    )
+
+    with pytest.raises(ValueError, match="diagonal"):
+        check_similarity_lookup(sim)
