@@ -1,4 +1,4 @@
-# <img width="300" alt="ct-validation" src="https://github.com/user-attachments/assets/fc5443b6-e93b-4fbb-a841-fffca899eedf" />
+# <img width="300" alt="ct-validation" src="https://github.com/user-attachments/assets/6dc30335-d5f3-432c-b09c-e46a11f2b575" />
 
 An open framework for benchmarking gene-indication evidence against clinical trial outcomes.
 
