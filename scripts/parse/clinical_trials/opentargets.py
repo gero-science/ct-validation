@@ -14,23 +14,10 @@ import logging
 from pathlib import Path
 
 import pandas as pd
+import trial_status
 import yaml
 
 log = logging.getLogger(__name__)
-
-
-def _extract_efo_id(disease_id: str, ancestors: list | None) -> str | None:
-    """Extract EFO ID from disease_id or ancestors list, converting _ to : format."""
-    if pd.isna(disease_id):
-        return None
-    if disease_id.startswith("EFO_"):
-        return disease_id.replace("EFO_", "EFO:")
-    # Try to find EFO in ancestors
-    if ancestors is not None:
-        for anc in ancestors:
-            if isinstance(anc, str) and anc.startswith("EFO_"):
-                return anc.replace("EFO_", "EFO:")
-    return None
 
 
 def _join_list(val) -> str | None:
@@ -105,14 +92,13 @@ def parse_gene_drug(df: pd.DataFrame) -> pd.DataFrame:
 def parse_drug_indication(df: pd.DataFrame) -> pd.DataFrame:
     """Extract drug-indication pairs from Open Targets known_drug."""
     result = df[
-        ["drugId", "prefName", "drugType", "diseaseId", "label", "ancestors", "phase", "urls"]
+        ["drugId", "prefName", "drugType", "diseaseId", "label", "phase", "status", "urls"]
     ].copy()
 
-    # Extract EFO IDs
-    result["efo_id"] = result.apply(
-        lambda r: _extract_efo_id(r["diseaseId"], r["ancestors"]),
-        axis=1,
-    )
+    # A third of the ids are MONDO, HP, Orphanet, MP, GO or DOID. EFO is a merged ontology
+    # that imports those under their own prefixes, so keep the id as recorded rather than
+    # rewriting it to an EFO ancestor.
+    result["efo_id"] = result["diseaseId"].str.replace("_", ":", n=1)
 
     # Filter to rows with valid EFO and phase
     result["phase"] = pd.to_numeric(result["phase"], errors="coerce")
@@ -123,6 +109,12 @@ def parse_drug_indication(df: pd.DataFrame) -> pd.DataFrame:
     # Extract subsources from urls
     result["subsource"] = result["urls"].apply(_extract_subsources)
 
+    result = trial_status.apply(
+        result,
+        trial_status.OPENTARGETS_CONCLUDED,
+        trial_status.OPENTARGETS_DROPPED,
+    )
+
     result = result.rename(
         columns={
             "drugId": "chembl_id",
@@ -132,7 +124,17 @@ def parse_drug_indication(df: pd.DataFrame) -> pd.DataFrame:
         },
     )
 
-    keep = ["efo_id", "phase", "drug_name", "chembl_id", "efo_term", "subsource", "molecule_type"]
+    keep = [
+        "efo_id",
+        "phase",
+        "status",
+        "is_concluded",
+        "drug_name",
+        "chembl_id",
+        "efo_term",
+        "subsource",
+        "molecule_type",
+    ]
     result = result[keep].drop_duplicates()
 
     log.info(

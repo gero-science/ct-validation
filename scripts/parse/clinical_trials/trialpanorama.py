@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 
 import pandas as pd
+import trial_status
 import yaml
 
 log = logging.getLogger(__name__)
@@ -24,7 +25,8 @@ DEFAULT_PHASE_STANDARDIZATION = {
 }
 DEFAULT_VALID_PHASES = ["PHASE1", "PHASE2", "PHASE3", "PHASE4"]
 DEFAULT_TRIAL_TYPES = ["INTERVENTIONAL"]
-DEFAULT_EXCLUDED_STATUSES = ["", "UNKNOWN"]
+# Empty status is unclassifiable, so it is excluded rather than passed to trial_status
+DEFAULT_EXCLUDED_STATUSES = [""]
 
 
 def load_trialpanorama_data(input_dir: Path) -> tuple[pd.DataFrame, ...]:
@@ -78,8 +80,8 @@ def create_gene_drug_mapping(
     log.info(f"After base cleaning: {len(df):,} records")
 
     # Filter by pChEMBL
-    df = df[(df["act_value"].notna()) & (df["act_value"] > min_pchembl)]
-    log.info(f"After pChEMBL > {min_pchembl}: {len(df):,} records")
+    df = df[(df["act_value"].notna()) & (df["act_value"] >= min_pchembl)]
+    log.info(f"After pChEMBL >= {min_pchembl}: {len(df):,} records")
 
     # Select and rename columns to standard schema
     result = (
@@ -113,7 +115,9 @@ def create_drug_trial_mapping(
     Args:
         trial_types: Trial types to include (default: ["INTERVENTIONAL"])
         valid_phases: Phases to include after standardization (default: PHASE1-4)
-        excluded_statuses: Recruitment statuses to exclude (default: ["", "UNKNOWN"])
+        excluded_statuses: Recruitment statuses to exclude (default: [""]). UNKNOWN
+            is retained — it still shows the phase was reached, and trial_status
+            resolves it as concluded.
         phase_standardization: Mapping to standardize phase names
     """
     trial_types = trial_types or DEFAULT_TRIAL_TYPES
@@ -140,8 +144,11 @@ def create_drug_trial_mapping(
     # Filter drugs to valid studies
     drugs = drugs[drugs["study_id"].isin(studies["study_id"])]
 
-    # Filter conditions with MESH IDs
-    conditions = conditions[conditions["condition_mesh_id"].notna()]
+    # Only the study's own conditions. The other two types are TrialPanorama's closure over
+    # the MeSH tree, which enters a trial of one carcinoma as a trial of Neoplasms.
+    conditions = conditions[
+        conditions["condition_mesh_id"].notna() & conditions["condition_mesh_type"].eq("mesh-list")
+    ]
 
     # Build mapping
     drug_cols = ["study_id", "drug_name", "drug_moa_id"]
@@ -151,7 +158,7 @@ def create_drug_trial_mapping(
     result = (
         drugs[drug_cols]
         .merge(
-            studies[["study_id", "phase", "study_source"]],
+            studies[["study_id", "phase", "study_source", "recruitment_status"]],
             on="study_id",
             how="inner",
         )
@@ -187,14 +194,21 @@ def create_drug_trial_mapping(
     result = result[result["phase"].notna()].copy()
     result["phase"] = result["phase"].astype("Int64")
 
-    return result.rename(
+    result = result.rename(
         columns={
             "condition_mesh_id": "mesh_id",
             "condition_name": "mesh_heading",
             "efo_label": "efo_term",
+            "recruitment_status": "status",
             "study_source": "subsource",
             "study_id": "study_ids",
         },
+    )
+
+    return trial_status.apply(
+        result,
+        trial_status.TRIALPANORAMA_CONCLUDED,
+        trial_status.TRIALPANORAMA_DROPPED,
     )
 
 

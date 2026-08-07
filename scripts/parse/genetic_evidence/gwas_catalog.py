@@ -32,14 +32,15 @@ def extract_ontology_id(uri) -> str | None:
 def parse_gwas_catalog(
     raw_path: Path,
     output_path: Path,
-    max_pvalue: float = 1e-8,
+    max_pvalue: float = 5e-8,
 ) -> pd.DataFrame:
     """Parse GWAS Catalog to gene-trait associations."""
     log.info("Loading GWAS Catalog...")
     df = pd.read_csv(raw_path, sep="\t", low_memory=False)
     log.info(f"Loaded {len(df):,} associations")
 
-    # Filter by p-value
+    # Strict: genome-wide significance is p < 5e-8, so associations reported at
+    # exactly the threshold do not clear it.
     df = df[df["P-VALUE"] < max_pvalue].copy()
     log.info(f"After p-value < {max_pvalue}: {len(df):,}")
 
@@ -117,7 +118,7 @@ def main():
         output_path=args.output or output_dir / "genetic_evidence" / "gwas_catalog.parquet",
         max_pvalue=args.max_pvalue
         if args.max_pvalue is not None
-        else thresholds.get("gwas_max_pvalue", 1e-8),
+        else thresholds.get("gwas_max_pvalue", 5e-8),
     )
 
 

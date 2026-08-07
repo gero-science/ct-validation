@@ -4,11 +4,12 @@ Main entry point:
 - validate(): Run validation pipeline (with config and/or explicit args)
 """
 
-from ct_validation.api import validate
+from ct_validation.api import MissingOngoingWarning, validate
 from ct_validation.config import load_config
 from ct_validation.config.schema import PHASE_NAMES, Config, phase_label
 from ct_validation.plotting import forest_plot
 from ct_validation.validation import (
+    BootstrapReplicateLossWarning,
     EnrichmentResult,
     calculate_enrichment,
     check_similarity_lookup,
@@ -19,12 +20,14 @@ from ct_validation.validation import (
     woolf_ci_odds_ratio,
 )
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "PHASE_NAMES",
+    "BootstrapReplicateLossWarning",
     "Config",
     "EnrichmentResult",
+    "MissingOngoingWarning",
     "calculate_enrichment",
     "check_similarity_lookup",
     "create_matched_pairs_df",

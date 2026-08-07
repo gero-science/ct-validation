@@ -147,3 +147,124 @@ def test_rates_between_zero_and_one(enrichment_input_df):
 
     assert 0 <= result.rate_yes <= 1
     assert 0 <= result.rate_no <= 1
+
+
+def _censoring_df(rows: list[tuple[int, bool]]) -> pd.DataFrame:
+    """Build an enrichment input from (max_phase, is_ongoing) rows, all with evidence."""
+    return pd.DataFrame(
+        {
+            "max_phase": [phase for phase, _ in rows],
+            "is_ongoing": [ongoing for _, ongoing in rows],
+            "has_genetic_evidence": [True] * len(rows),
+        }
+    )
+
+
+def test_ongoing_pair_is_excluded_from_the_transition_it_has_not_finished():
+    """A pair still running at phase_from is neither a success nor a failure."""
+    df = _censoring_df([(1, True), (1, False)])
+
+    result = calculate_enrichment(df, phase_from=1, phase_to=2)
+
+    assert result.n_yes == 1
+    assert result.x_yes == 0
+
+
+def test_ongoing_pair_above_phase_from_is_censored_for_a_later_target_phase():
+    """Censoring keys on phase_to, not phase_from: still running at II is undetermined for IV."""
+    df = _censoring_df([(2, True), (2, False)])
+
+    result = calculate_enrichment(df, phase_from=1, phase_to=4)
+
+    assert result.n_yes == 1
+
+
+def test_ongoing_pair_that_reached_phase_to_still_counts_as_a_success():
+    """Reaching the target phase settles the transition however much is still running."""
+    df = _censoring_df([(4, True)])
+
+    result = calculate_enrichment(df, phase_from=3, phase_to=4)
+
+    assert result.n_yes == 1
+    assert result.x_yes == 1
+
+
+def test_concluded_pair_below_phase_to_counts_as_a_failure():
+    """Only undetermined outcomes are censored; a concluded pair that stalled failed."""
+    df = _censoring_df([(2, False)])
+
+    result = calculate_enrichment(df, phase_from=2, phase_to=3)
+
+    assert result.n_yes == 1
+    assert result.x_yes == 0
+
+
+def test_missing_ongoing_column_censors_nothing():
+    """Without the column every pair counts as concluded, including the ongoing one."""
+    df = _censoring_df([(1, True), (2, False), (4, False)])
+
+    with_col = calculate_enrichment(df, phase_from=1, phase_to=4)
+    without_col = calculate_enrichment(df.drop(columns=["is_ongoing"]), phase_from=1, phase_to=4)
+
+    assert with_col.n_yes == 2
+    assert without_col.n_yes == 3
+
+
+def test_censoring_applies_to_every_transition():
+    """calculate_all_enrichments passes the flag through to each transition."""
+    df = _censoring_df([(1, True), (2, True), (3, False)])
+
+    result = calculate_all_enrichments(df, [(1, 2), (2, 3), (1, 4)])
+
+    n_yes = dict(zip(result["phase_label"], result["n_yes"]))
+    assert n_yes["I→II"] == 2  # the phase-1 pair is censored
+    assert n_yes["II→III"] == 1  # the phase-2 pair is censored, the phase-1 pair ineligible
+    assert n_yes["I→Approved"] == 1  # only the concluded phase-3 pair survives
+
+
+def _clustered_df() -> pd.DataFrame:
+    """40 pairs over 8 genes, with genetic evidence enriched for reaching phase 4.
+
+    Success counts differ between genes; identical clusters would leave the bootstrap no
+    variance to report.
+    """
+    successes_per_gene = {True: [4, 3, 3, 2], False: [2, 1, 1, 0]}
+    rows = []
+    for has_ge, counts in successes_per_gene.items():
+        for gene_idx, n_success in enumerate(counts):
+            for pair_idx in range(5):
+                rows.append(
+                    {
+                        "gene": f"GENE_{has_ge}_{gene_idx}",
+                        "max_phase": 4 if pair_idx < n_success else 1,
+                        "has_genetic_evidence": has_ge,
+                    },
+                )
+    return pd.DataFrame(rows)
+
+
+def test_bootstrap_columns_absent_by_default():
+    """Without cluster_col the output schema is unchanged."""
+    result = calculate_all_enrichments(_clustered_df(), [(1, 4)])
+
+    assert "rr_boot_ci_lower" not in result.columns
+    assert "rr_boot_ci_upper" not in result.columns
+
+
+def test_cluster_col_adds_bootstrap_ci_around_both_ratios():
+    """cluster_col produces bootstrap intervals bracketing both point estimates."""
+    result = calculate_all_enrichments(_clustered_df(), [(1, 4)], cluster_col="gene")
+
+    row = result.iloc[0]
+    assert row["rr_boot_ci_lower"] < row["rr"] < row["rr_boot_ci_upper"]
+    assert row["or_boot_ci_lower"] < row["or"] < row["or_boot_ci_upper"]
+
+
+def test_bootstrap_leaves_point_estimates_untouched():
+    """Resampling reports uncertainty only; RR, OR and p-value are unaffected."""
+    df = _clustered_df()
+    plain = calculate_all_enrichments(df, [(1, 4)]).iloc[0]
+    clustered = calculate_all_enrichments(df, [(1, 4)], cluster_col="gene").iloc[0]
+
+    for col in ("rr", "rr_ci_lower", "rr_ci_upper", "or", "or_ci_lower", "or_ci_upper", "p_value"):
+        assert clustered[col] == plain[col]

@@ -25,7 +25,6 @@ GENETIC_EVIDENCE_SCRIPTS = {
     "gwas_catalog": SCRIPTS_DIR / "genetic_evidence" / "gwas_catalog.py",
     "clinvar": SCRIPTS_DIR / "genetic_evidence" / "clinvar.py",
     "opentargets": SCRIPTS_DIR / "genetic_evidence" / "opentargets.py",
-    "omim": SCRIPTS_DIR / "genetic_evidence" / "omim.py",
     "genebass": SCRIPTS_DIR / "genetic_evidence" / "genebass.py",
 }
 

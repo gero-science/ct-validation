@@ -35,7 +35,6 @@ def aggregate_genetic_evidence(
     gwas_path: Path,
     clinvar_path: Path,
     opentargets_path: Path,
-    omim_path: Path,
     genebass_path: Path,
     output_path: Path,
 ) -> pd.DataFrame:
@@ -46,7 +45,6 @@ def aggregate_genetic_evidence(
         (gwas_path, "GWAS Catalog", "efo_id", "p_value", None),
         (clinvar_path, "ClinVar", "efo_id", None, None),
         (opentargets_path, "OpenTargets", "efo_id", None, "score"),
-        (omim_path, "OMIM", "efo_id", None, None),
         (genebass_path, "Genebass", "efo_id", "p_value", None),
     ]
     for path, name, efo_col, pval_col, score_col in source_configs:
@@ -84,7 +82,6 @@ def main():
     parser.add_argument("--gwas", type=Path, help="GWAS Catalog parquet")
     parser.add_argument("--clinvar", type=Path, help="ClinVar parquet")
     parser.add_argument("--opentargets", type=Path, help="OpenTargets parquet")
-    parser.add_argument("--omim", type=Path, help="OMIM parquet")
     parser.add_argument("--genebass", type=Path, help="Genebass parquet")
     parser.add_argument("--output", type=Path, help="Output parquet path")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -110,7 +107,6 @@ def main():
         gwas_path=args.gwas or ge_dir / "gwas_catalog.parquet",
         clinvar_path=args.clinvar or ge_dir / "clinvar.parquet",
         opentargets_path=args.opentargets or ge_dir / "opentargets.parquet",
-        omim_path=args.omim or ge_dir / "omim.parquet",
         genebass_path=args.genebass or ge_dir / "genebass.parquet",
         output_path=args.output or ge_dir / "aggregated" / "genetic_evidence.parquet",
     )

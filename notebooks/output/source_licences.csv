@@ -1,0 +1,10 @@
+domain,source,license,note
+clinical_trials,OpenTargets,CC0 1.0,known_drug is ChEMBL-derived; the Platform output is CC0
+clinical_trials,TrialPanorama,Apache 2.0,HuggingFace dataset card only; no LICENSE file
+clinical_trials,ChEMBL,CC BY-SA 3.0,share-alike propagates to any redistributed derivative
+clinical_trials,STITCH,CC BY 4.0,"covers actions, chemical_sources and protein_chemical_links; the *.detailed and *.transfer files are CC BY-NC-SA 4.0 and are not used"
+clinical_trials,DGIdb,code MIT; data per upstream source,"interactions carry the licences of the sources DGIdb aggregates, some non-commercial; the parser drops interaction_source_db_name, so they cannot be separated after parsing"
+genetic_evidence,GWAS Catalog,EMBL-EBI terms; none named,EMBL-EBI 'places no additional restrictions on the use or redistribution of the data ... other than those provided by the original data owners'
+genetic_evidence,ClinVar,US public domain; none named,"'NCBI itself places no restrictions on the use or distribution of the data contained therein'; submitters may hold rights, attribution requested"
+genetic_evidence,OpenTargets,CC0 1.0,"association_by_datasource_direct, same 25.12 release"
+genetic_evidence,Genebass,none stated — unclear,"public bulk downloads of UK Biobank-derived summary statistics; the paper names no licence. Hail/GCS is an access burden, not a restriction"

@@ -25,10 +25,10 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --locked --extra mcp
+        run: uv sync --locked --extra mcp --extra parse
 
       - name: Lint
-        run: uv run ruff check src tests
+        run: uv run ruff check src tests scripts
 
       - name: Test
         run: uv run pytest tests/ -v

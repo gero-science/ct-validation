@@ -88,14 +88,17 @@ def main(
     Can be called with config only, args only, or both (args override config).
 
     Input Schemas:
-        clinical_trials:   gene, efo_id, max_phase
+        clinical_trials:   gene, efo_id, max_phase, is_ongoing (optional)
+                           One row per pair (duplicates raise); is_ongoing censors pairs
+                           still running below phase_to.
         targets:           gene, efo_id
         similarity_lookup: efo_id_1, efo_id_2, similarity
         baseline_evidence: gene, efo_id (optional)
 
     Output Schema:
         phase_from, phase_to    Phase transition
-        n_yes, n_no             Pairs at phase_from+ (with/without evidence)
+        n_yes, n_no             Pairs at phase_from+, less those censored as still
+                                running below phase_to (with/without evidence)
         x_yes, x_no             Pairs reaching phase_to+
         rate_yes, rate_no       Progression rates
         rr, rr_ci_lower/upper   Risk ratio with 95% CI
@@ -221,10 +224,7 @@ def _format_number(value: float, *, width: int = 8, precision: int = 3) -> str:
 
 def _format_ci(lower: float, upper: float) -> str:
     """Format a confidence interval, handling undefined bounds."""
-    if any(
-        v is None or (isinstance(v, float) and math.isnan(v))
-        for v in (lower, upper)
-    ):
+    if any(v is None or (isinstance(v, float) and math.isnan(v)) for v in (lower, upper)):
         return "N/A"
     return f"[{lower:.3f}, {upper:.3f}]"
 

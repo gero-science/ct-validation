@@ -1,6 +1,6 @@
 [project]
 name = "ct-validation"
-version = "0.3.0"
+version = "0.4.0"
 description = "Benchmarking gene-indication evidence against clinical trial outcomes"
 readme = "README.md"
 authors = [
@@ -68,7 +68,11 @@ mcp = [
 
 [dependency-groups]
 dev = [
+    "jupytext>=1.19.5",
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.10",
 ]
+
+[tool.ruff]
+line-length = 100

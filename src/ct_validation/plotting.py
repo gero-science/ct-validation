@@ -25,6 +25,7 @@ def forest_plot(
     *,
     show_counts: bool = True,
     sort_order: list[str] | None = None,
+    color_col: str | None = None,
 ) -> tuple[plt.Figure, plt.Axes]:
     """Horizontal forest plot of effect sizes with 95% confidence intervals.
 
@@ -53,6 +54,9 @@ def forest_plot(
     sort_order : list of str or None
         Explicit label order for the y-axis. If None (default), rows are
         sorted by the metric ascending.
+    color_col : str or None
+        Column whose values split the rows into colour groups, drawn with
+        a legend. Row order is unaffected.
 
     Returns
     -------
@@ -82,12 +86,20 @@ def forest_plot(
         fig = ax.figure
 
     y = range(len(df))
-    ax.errorbar(
-        df[col],
-        y,
-        xerr=[df[col] - df[ci_lo], df[ci_hi] - df[col]],
-        fmt="o",
-    )
+    # y positions come from the sorted frame's index, so colour groups may interleave.
+    # dropna=False: a dropped row loses its marker while its tick label and count still
+    # draw, which reads as an off-scale point.
+    groups = [(None, df)] if color_col is None else df.groupby(color_col, sort=False, dropna=False)
+    for name, part in groups:
+        ax.errorbar(
+            part[col],
+            part.index,
+            xerr=[part[col] - part[ci_lo], part[ci_hi] - part[col]],
+            fmt="o",
+            label=None if name is None else str(name),
+        )
+    if color_col is not None:
+        ax.legend(frameon=False, fontsize=9)
     ax.set_yticks(list(y))
     ax.set_yticklabels(df[label_col].tolist())
     ax.axvline(1.0, color="lightgray", linestyle="--", linewidth=0.8)

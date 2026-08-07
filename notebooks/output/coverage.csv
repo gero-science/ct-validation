@@ -1,0 +1,10 @@
+domain,source,pairs,genes,efo_ids,pairs_in_universe,genes_in_universe,efo_ids_in_universe
+genetic_evidence,Minikel (Citeline),107365,12523,2265,104294,11721,2263
+clinical_trials,Minikel (Citeline),43962,2462,1174,43498,2393,1172
+genetic_evidence,Combined,552778,30721,23792,427844,17963,23517
+genetic_evidence,GWAS Catalog,395722,28919,12653,274663,16877,12304
+genetic_evidence,ClinVar,20890,3919,4364,17285,3137,4361
+genetic_evidence,OpenTargets,227775,14796,16702,227584,14714,16695
+genetic_evidence,Genebass,3281,1483,154,3155,1442,154
+clinical_trials,Open Targets (known_drug),70537,1515,2611,70395,1509,2608
+clinical_trials,Combined,2236441,5336,4568,2183352,5082,4567

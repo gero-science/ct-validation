@@ -9,6 +9,7 @@ from ct_validation.validation.matching import (
 )
 from ct_validation.validation.statistics import (
     fisher_exact_pvalue,
+    BootstrapReplicateLossWarning,
     katz_ci_risk_ratio,
     woolf_ci_odds_ratio,
 )
@@ -21,6 +22,7 @@ __all__ = [
     "create_matched_pairs_set",
     "fisher_exact_pvalue",
     "get_expanded_disease_set",
+    "BootstrapReplicateLossWarning",
     "katz_ci_risk_ratio",
     "woolf_ci_odds_ratio",
 ]

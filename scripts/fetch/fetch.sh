@@ -67,12 +67,21 @@ step_2() {
 step_3() {
     local d="${BASE_DIR}/data/sources/opentargets/25.12"
     mkdir -p "$d" && cd "$d"
-    rm -rf association_by_datasource_direct target
+    rm -rf association_by_datasource_direct association_by_datasource_indirect association_overall_direct target
     $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
         ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/association_by_datasource_direct/ || true
+    # Ontology-propagated table; feeds only the propagated arm in notebooks/benchmark.py §9.
+    $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
+        ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/association_by_datasource_indirect/ || true
+    # association_overall_direct is not parsed; notebooks/benchmark.py §6a plots it as the
+    # all-evidence reference series alongside the per-datasource ones (Fig. S4).
+    $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
+        ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/association_overall_direct/ || true
     $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
         ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/target/ || true
     [ -f association_by_datasource_direct/_SUCCESS ] || { echo "ERROR: OT association_by_datasource_direct missing _SUCCESS" >&2; return 1; }
+    [ -f association_by_datasource_indirect/_SUCCESS ] || { echo "ERROR: OT association_by_datasource_indirect missing _SUCCESS" >&2; return 1; }
+    [ -f association_overall_direct/_SUCCESS ] || { echo "ERROR: OT association_overall_direct missing _SUCCESS" >&2; return 1; }
     [ -f target/_SUCCESS ] || { echo "ERROR: OT target missing _SUCCESS" >&2; return 1; }
 }
 
@@ -158,8 +167,8 @@ main() {
     steps=$(parse_steps "${1:-}") || exit 1
 
     if [[ -z "${1:-}" ]]; then
-        echo "[--/${TOTAL}] OMIM: skipped (manual — download genemap2.txt from omim.org/downloads)"
-        echo "[--/${TOTAL}] Genebass: skipped (manual — requires GCP account for gs://ukbb-exome-public/500k/results/results.mt)"
+        echo "[--/${TOTAL}] Genebass: not fetched — the preprocessed associations ship in the data release."
+        echo "            Regenerating them from gs://ukbb-exome-public/500k/results/results.mt needs GCP and Hail."
     fi
 
     for n in $steps; do
@@ -174,7 +183,9 @@ main() {
 
     echo "Done."
     if [[ -z "${1:-}" ]]; then
-        echo "Mappings (OxO, UKB manifest, gene universe) must be placed manually from the data release."
+        echo "Mappings (OxO, UKB manifest) and the Genebass associations ship in the data release:"
+        echo "  https://doi.org/10.5281/zenodo.21839217"
+        echo "Gene universe: python scripts/parse/gene_universe.py"
     fi
 }
 

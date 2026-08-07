@@ -10,6 +10,11 @@ Creates:
 2. gene_drug_mapping.parquet - Combined gene-drug from all sources
 3. drug_indication_mapping.parquet - Combined drug-indication
 4. gene_indication_max_phase.parquet - Gene-indication with max phase
+5. gene_drug_by_source.parquet - As (2), one row per source instead of collapsed
+6. drug_indication_by_source.parquet - As (3), one row per source instead of collapsed
+
+Filtering a combined table by source name is wrong: collapsing takes MAX(phase) and
+`&`-joins source, so other sources' phases and action types land in that arm.
 """
 
 import argparse
@@ -18,6 +23,7 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
+import trial_status
 import yaml
 
 log = logging.getLogger(__name__)
@@ -31,6 +37,11 @@ SOURCE_JOIN_KEYS = {
     "dgidb": "drug_name_normalized",
     "opentargets": "chembl_id",
 }
+
+# ChEMBL indications carry no trial status, and `phase_concluded` is a MAX across
+# sources: one status-less record at a pair's top phase suppresses censoring for the
+# whole pair. Only the indications are dropped — these drugs still feed the clustering.
+DRUG_INDICATION_EXCLUDED_SOURCES = {"chembl"}
 
 SOURCE_DISPLAY_NAMES = {
     "chembl": "ChEMBL",
@@ -51,6 +62,27 @@ SCORE_COLUMNS = [
 
 ID_COLUMNS = ["chembl_id", "drugbank_id", "drug_name_normalized", "stitch_id"]
 DRUG_METADATA_COLUMNS = ["molecule_type", "target_class", "trade_names", "synonyms"]
+
+# Whose name names a drug cluster: curated names beat registry text, which is often
+# a trial arm ("1.25 mg intravitreal bevacizumab") rather than a drug.
+SOURCE_NAME_PRIORITY = ["ChEMBL", "OpenTargets", "DrugBank", "DGIdb", "TrialPanorama", "STITCH"]
+
+
+def _drug_name_key(alias: str = "") -> str:
+    """SQL for the normalized drug name, NULL when blank.
+
+    Cluster membership is built with this expression and every join recomputes it,
+    so any drift between the two silently drops rows.
+    """
+    col = f"{alias}.drug_name" if alias else "drug_name"
+    return f"CASE WHEN TRIM(LOWER(COALESCE({col}, ''))) = '' THEN NULL ELSE TRIM(LOWER({col})) END"
+
+
+def _join_key_sql(alias: str, join_key: str) -> tuple[str, str]:
+    """Return (key expression, non-empty check) for joining `alias` to a cluster."""
+    if join_key == "drug_name_normalized":
+        return _drug_name_key(alias), f"{_drug_name_key(alias)} IS NOT NULL"
+    return f"{alias}.{join_key}", f"{alias}.{join_key} IS NOT NULL AND {alias}.{join_key} != ''"
 
 
 def load_dgidb_synonyms(drugs_path: Path) -> dict[str, str]:
@@ -198,8 +230,13 @@ def _build_drug_id_mapping(
     gene_drug_paths: dict[str, Path],
     drug_indication_paths: dict[str, Path],
     drug_synonyms: dict[str, str] | None = None,
-) -> pd.DataFrame:
-    """Collect drug records from all sources and build unified drug ID mapping."""
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Collect drug records from all sources and build unified drug ID mapping.
+
+    Returns:
+        (drug_id_mapping, membership): one display row per cluster, plus the
+        identifier -> cluster lookup sources join through (see _cluster_membership).
+    """
     log.info("Creating drug ID mapping...")
 
     # Build UNION ALL query to collect drug records from all sources.
@@ -231,17 +268,18 @@ def _build_drug_id_mapping(
         )
 
     if not union_parts:
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
     union_query = " UNION ALL ".join(union_parts)
 
     # Add normalized drug name and collect all records
+    rank_cases = " ".join(f"WHEN '{name}' THEN {i}" for i, name in enumerate(SOURCE_NAME_PRIORITY))
     all_records = conn.execute(
         # sql
         f"""
         SELECT *,
-            CASE WHEN TRIM(LOWER(COALESCE(drug_name, ''))) = '' THEN NULL
-                 ELSE TRIM(LOWER(drug_name)) END AS drug_name_normalized
+            {_drug_name_key()} AS drug_name_normalized,
+            CASE source {rank_cases} ELSE {len(SOURCE_NAME_PRIORITY)} END AS source_rank
         FROM ({union_query})
     """,
     ).df()
@@ -263,39 +301,78 @@ def _build_drug_id_mapping(
     # Register and aggregate with DuckDB
     conn.register("drug_records", all_records)
 
+    # Unordered FIRST picks an arbitrary row of a parallel scan, which made this table
+    # and every count downstream of it differ between runs. Name and normalized name
+    # share one ORDER BY so they can never describe two different drugs.
+    name_order = "ORDER BY source_rank, drug_name"
     result = conn.execute(
         # sql
-        """
+        f"""
         SELECT
             drug_cluster AS our_drug_id,
-            FIRST(drug_name) FILTER (WHERE drug_name IS NOT NULL) AS drug_name,
-            FIRST(drug_name_normalized) FILTER (WHERE drug_name_normalized IS NOT NULL) AS drug_name_normalized,
-            FIRST(chembl_id) FILTER (WHERE chembl_id IS NOT NULL) AS chembl_id,
-            FIRST(drugbank_id) FILTER (WHERE drugbank_id IS NOT NULL) AS drugbank_id,
-            FIRST(stitch_id) FILTER (WHERE stitch_id IS NOT NULL) AS stitch_id,
-            FIRST(molecule_type) FILTER (WHERE molecule_type IS NOT NULL) AS molecule_type,
-            FIRST(target_class) FILTER (WHERE target_class IS NOT NULL) AS target_class,
-            FIRST(trade_names) FILTER (WHERE trade_names IS NOT NULL) AS trade_names,
-            FIRST(synonyms) FILTER (WHERE synonyms IS NOT NULL) AS synonyms,
+            FIRST(drug_name {name_order}) FILTER (WHERE drug_name IS NOT NULL) AS drug_name,
+            FIRST(drug_name_normalized {name_order})
+                FILTER (WHERE drug_name IS NOT NULL) AS drug_name_normalized,
+            MIN(chembl_id) AS chembl_id,
+            MIN(drugbank_id) AS drugbank_id,
+            MIN(stitch_id) AS stitch_id,
+            MIN(molecule_type) AS molecule_type,
+            MIN(target_class) AS target_class,
+            MIN(trade_names) AS trade_names,
+            MIN(synonyms) AS synonyms,
             STRING_AGG(DISTINCT source, '&' ORDER BY source) AS source
         FROM drug_records
         GROUP BY drug_cluster
+        ORDER BY drug_cluster
     """,
     ).df()
 
     conn.unregister("drug_records")
-    return result
+    return result, _cluster_membership(all_records)
+
+
+def _cluster_membership(all_records: pd.DataFrame) -> pd.DataFrame:
+    """Map every identifier in a cluster to its cluster, as (id_type, id_value).
+
+    Sources must join through this, not through drug_id_mapping: that table keeps one
+    representative identifier per cluster, so a row keyed on any other member
+    identifier silently fails to join and is dropped.
+    """
+    parts = [
+        all_records[[col, "drug_cluster"]]
+        .dropna(subset=[col])
+        .rename(columns={col: "id_value", "drug_cluster": "our_drug_id"})
+        .assign(id_type=col)
+        for col in ID_COLUMNS
+    ]
+    membership = pd.concat(parts, ignore_index=True)
+    # dropna() misses empty identifiers, which every record carrying one shares — they
+    # would all collapse into a single cluster.
+    membership = membership[membership["id_value"].astype(str).str.strip() != ""]
+    membership = membership.drop_duplicates()
+
+    # _UnionFind keys on the bare value with no id_type namespace, so a value used as
+    # two kinds of identifier would merge two unrelated drugs.
+    ambiguous = membership.groupby("id_value")["id_type"].nunique()
+    if (clashes := int((ambiguous > 1).sum())) > 0:
+        raise AssertionError(f"{clashes} identifiers are used as more than one id_type")
+
+    log.info(f"  Cluster identifiers: {len(membership):,}")
+    return membership
 
 
 def _build_gene_drug(
     conn: duckdb.DuckDBPyConnection,
     gene_drug_paths: dict[str, Path],
-    drug_id_mapping: pd.DataFrame,
-) -> pd.DataFrame:
-    """Merge each gene-drug source with drug mapping, concat and aggregate."""
+    membership: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Merge each gene-drug source with drug clusters, concat and aggregate.
+
+    Returns the collapsed table and the same edges kept one row per source.
+    """
     log.info("Creating gene-drug mapping...")
 
-    conn.register("drug_mapping", drug_id_mapping)
+    conn.register("drug_membership", membership)
 
     # Build UNION ALL with source-specific join logic
     union_parts = []
@@ -326,32 +403,26 @@ def _build_gene_drug(
             else:
                 select_parts.append(f"NULL AS {col}")
 
-        # Determine join condition
-        if join_key == "drug_name_normalized":
-            join_expr = """
-                CASE WHEN TRIM(LOWER(COALESCE(gd.drug_name, ''))) = '' THEN NULL
-                     ELSE TRIM(LOWER(gd.drug_name)) END = dm.drug_name_normalized
-            """
-        else:
-            join_expr = f"gd.{join_key} = dm.{join_key}"
+        key_expr, null_check = _join_key_sql("gd", join_key)
 
         union_parts.append(
             # sql
             f"""
             SELECT {", ".join(select_parts)}
             FROM '{path}' gd
-            INNER JOIN drug_mapping dm ON {join_expr}
+            INNER JOIN drug_membership dm
+                ON dm.id_type = '{join_key}' AND dm.id_value = {key_expr}
             WHERE gd.gene IS NOT NULL AND TRIM(gd.gene) != '' AND TRIM(gd.gene) != 'UNKNOWN'
-                AND {"gd." + join_key if join_key != "drug_name_normalized" else "TRIM(LOWER(COALESCE(gd.drug_name, '')))"} IS NOT NULL
-                AND {"gd." + join_key if join_key != "drug_name_normalized" else "TRIM(LOWER(COALESCE(gd.drug_name, '')))"} != ''
+                AND {null_check}
         """,
         )
 
     if not union_parts:
-        conn.unregister("drug_mapping")
-        return pd.DataFrame()
+        conn.unregister("drug_membership")
+        return pd.DataFrame(), pd.DataFrame()
 
     union_query = " UNION ALL ".join(union_parts)
+    conn.execute(f"CREATE OR REPLACE TEMP TABLE gd_records AS {union_query}")
 
     # Build aggregation - check which score columns are available
     score_aggs = [f"MAX({col}) AS {col}" for col in SCORE_COLUMNS]
@@ -365,36 +436,65 @@ def _build_gene_drug(
             STRING_AGG(DISTINCT source, '&' ORDER BY source) AS source,
             STRING_AGG(DISTINCT subsource, '&' ORDER BY subsource)
                 FILTER (WHERE subsource IS NOT NULL) AS subsource,
-            FIRST(action_type) FILTER (WHERE action_type IS NOT NULL) AS action_type,
-            FIRST(drug_name) FILTER (WHERE drug_name IS NOT NULL) AS drug_name,
-            FIRST(chembl_id) FILTER (WHERE chembl_id IS NOT NULL) AS chembl_id,
-            FIRST(drugbank_id) FILTER (WHERE drugbank_id IS NOT NULL) AS drugbank_id,
-            FIRST(stitch_id) FILTER (WHERE stitch_id IS NOT NULL) AS stitch_id,
-            FIRST(molecule_type) FILTER (WHERE molecule_type IS NOT NULL) AS molecule_type,
+            -- Collapsing to one value resolves every activation/inhibition conflict
+            -- in the same direction; keep them all instead.
+            STRING_AGG(DISTINCT action_type, '&' ORDER BY action_type)
+                FILTER (WHERE action_type IS NOT NULL) AS action_type,
+            MIN(drug_name) AS drug_name,
+            MIN(chembl_id) AS chembl_id,
+            MIN(drugbank_id) AS drugbank_id,
+            MIN(stitch_id) AS stitch_id,
+            MIN(molecule_type) AS molecule_type,
             {", ".join(score_aggs)}
-        FROM ({union_query})
+        FROM gd_records
         GROUP BY gene, our_drug_id
     """,
     ).df()
 
-    conn.unregister("drug_mapping")
+    by_source = conn.execute(
+        # sql
+        """
+        SELECT
+            gene,
+            our_drug_id,
+            source,
+            STRING_AGG(DISTINCT subsource, '&' ORDER BY subsource)
+                FILTER (WHERE subsource IS NOT NULL) AS subsource,
+            STRING_AGG(DISTINCT action_type, '&' ORDER BY action_type)
+                FILTER (WHERE action_type IS NOT NULL) AS action_type
+        FROM gd_records
+        GROUP BY gene, our_drug_id, source
+    """,
+    ).df()
+
+    conn.execute("DROP TABLE gd_records")
+    conn.unregister("drug_membership")
     log.info(f"  Gene-drug pairs: {len(result):,}, genes: {result['gene'].nunique():,}")
-    return result
+    log.info(f"  Gene-drug pairs by source: {len(by_source):,}")
+    return result, by_source
 
 
 def _build_drug_indication(
     conn: duckdb.DuckDBPyConnection,
     drug_indication_paths: dict[str, Path],
-    drug_id_mapping: pd.DataFrame,
-) -> pd.DataFrame:
-    """Merge each drug-indication source with drug mapping, concat and aggregate."""
+    membership: pd.DataFrame,
+    *,
+    unknown_ongoing: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Merge each drug-indication source with drug clusters, concat and aggregate.
+
+    unknown_ongoing reclassifies Unknown-status records as still running. It is the
+    sensitivity arm for reading them as concluded, not an alternative default.
+
+    Returns the collapsed table and the same records kept one row per source.
+    """
     log.info("Creating drug-indication mapping...")
 
     if not drug_indication_paths:
         log.warning("  No drug-indication data found")
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
-    conn.register("drug_mapping", drug_id_mapping)
+    conn.register("drug_membership", membership)
 
     union_parts = []
     for source_name, path in drug_indication_paths.items():
@@ -420,56 +520,106 @@ def _build_drug_indication(
                 select_parts.append(f"di.{col}")
             else:
                 select_parts.append(f"NULL AS {col}")
+        # NULL reads as concluded below, so a status-less source silently un-censors
+        # every pair it touches — see DRUG_INDICATION_EXCLUDED_SOURCES.
+        if "is_concluded" not in cols:
+            select_parts.append("CAST(NULL AS BOOLEAN) AS is_concluded")
+        elif unknown_ongoing and "status" in cols:
+            unknown = ", ".join(f"'{s}'" for s in sorted(trial_status.UNKNOWN_STATUSES))
+            select_parts.append(
+                f"CASE WHEN di.status IN ({unknown}) THEN FALSE ELSE di.is_concluded END"
+                " AS is_concluded",
+            )
+        else:
+            select_parts.append("di.is_concluded")
         # Handle reserved keyword separately
         if "references" in cols:
             select_parts.append('di."references" AS "references"')
         else:
             select_parts.append('NULL AS "references"')
 
-        # Determine join condition
-        if join_key == "drug_name_normalized":
-            join_expr = """
-                CASE WHEN TRIM(LOWER(COALESCE(di.drug_name, ''))) = '' THEN NULL
-                     ELSE TRIM(LOWER(di.drug_name)) END = dm.drug_name_normalized
-            """
-            null_check = "TRIM(LOWER(COALESCE(di.drug_name, ''))) != ''"
-        else:
-            join_expr = f"di.{join_key} = dm.{join_key}"
-            null_check = f"di.{join_key} IS NOT NULL"
+        key_expr, null_check = _join_key_sql("di", join_key)
 
         union_parts.append(f"""
             SELECT {", ".join(select_parts)}
             FROM '{path}' di
-            INNER JOIN drug_mapping dm ON {join_expr}
+            INNER JOIN drug_membership dm
+                ON dm.id_type = '{join_key}' AND dm.id_value = {key_expr}
             WHERE {null_check}
         """)
 
     union_query = " UNION ALL ".join(union_parts)
+    conn.execute(f"CREATE OR REPLACE TEMP TABLE di_records AS {union_query}")
+
+    # An unmapped indication is not a pair: grouping them collapses every EFO-less
+    # indication a drug has into one row whose phase spans all of them.
+    unmapped = conn.execute("SELECT COUNT(*) FROM di_records WHERE efo_id IS NULL").fetchone()[0]
+    log.info(f"  Dropping {unmapped:,} records with no EFO mapping")
 
     result = conn.execute(
         # sql
-        f"""
+        """
         SELECT
             our_drug_id,
             efo_id,
-            FIRST(mesh_id) FILTER (WHERE mesh_id IS NOT NULL) AS mesh_id,
-            FIRST(efo_term) FILTER (WHERE efo_term IS NOT NULL) AS efo_term,
-            FIRST(mesh_heading) FILTER (WHERE mesh_heading IS NOT NULL) AS mesh_heading,
+            -- One EFO term routinely covers several MeSH headings, so id and heading
+            -- share an ORDER BY: minimised apart they name two different diseases.
+            FIRST(mesh_id ORDER BY mesh_id) FILTER (WHERE mesh_id IS NOT NULL) AS mesh_id,
+            MIN(efo_term) AS efo_term,
+            FIRST(mesh_heading ORDER BY mesh_id)
+                FILTER (WHERE mesh_id IS NOT NULL) AS mesh_heading,
             MAX(phase) AS phase,
+            MAX(phase) FILTER (WHERE COALESCE(is_concluded, TRUE)) AS phase_concluded,
             STRING_AGG(DISTINCT source, '&' ORDER BY source) AS source,
             STRING_AGG(DISTINCT subsource, '&' ORDER BY subsource)
                 FILTER (WHERE subsource IS NOT NULL) AS subsource,
-            FIRST("references") FILTER (WHERE "references" IS NOT NULL) AS "references",
+            MIN("references") AS "references",
             STRING_AGG(DISTINCT study_ids, '|' ORDER BY study_ids)
                 FILTER (WHERE study_ids IS NOT NULL) AS study_ids
-        FROM ({union_query})
+        FROM di_records
+        WHERE efo_id IS NOT NULL
         GROUP BY our_drug_id, efo_id
     """,
     ).df()
 
-    conn.unregister("drug_mapping")
+    by_source = conn.execute(
+        # sql
+        """
+        SELECT
+            our_drug_id,
+            efo_id,
+            source,
+            MAX(phase) AS phase,
+            MAX(phase) FILTER (WHERE COALESCE(is_concluded, TRUE)) AS phase_concluded,
+            STRING_AGG(DISTINCT subsource, '&' ORDER BY subsource)
+                FILTER (WHERE subsource IS NOT NULL) AS subsource
+        FROM di_records
+        WHERE efo_id IS NOT NULL
+        GROUP BY our_drug_id, efo_id, source
+    """,
+    ).df()
+
+    conn.execute("DROP TABLE di_records")
+    conn.unregister("drug_membership")
     log.info(f"  Drug-indication: {len(result):,}")
-    return result
+    log.info(f"  Drug-indication by source: {len(by_source):,}")
+    return result, by_source
+
+
+def is_ongoing_sql(prefix: str = "") -> str:
+    """The undetermined-outcome rule as SQL, over an aggregate of one pair's records.
+
+    Nothing concluded at the highest phase reached leaves the outcome undetermined. Approval
+    (phase 4) is terminal: reaching it settles the outcome whatever post-marketing trials are
+    still running.
+
+    Not a valid global row filter — for a transition p->q a pair with max_phase >= q already
+    succeeded and must still be counted. Censor only where `is_ongoing AND max_phase < q`.
+    """
+    return (
+        f"COALESCE(MAX({prefix}phase) < 4, TRUE) "
+        f"AND COALESCE(MAX({prefix}phase_concluded) < MAX({prefix}phase), TRUE)"
+    )
 
 
 def _build_gene_indication_max(
@@ -490,7 +640,7 @@ def _build_gene_indication_max(
     # DuckDB can split and reaggregate
     result = conn.execute(
         # sql
-        """
+        f"""
         WITH merged AS (
             SELECT
                 gd.gene,
@@ -499,6 +649,7 @@ def _build_gene_indication_max(
                 di.efo_id,
                 di.efo_term,
                 di.phase,
+                di.phase_concluded,
                 gd.source AS source_gd,
                 di.source AS source_di,
                 gd.pchembl,
@@ -520,10 +671,12 @@ def _build_gene_indication_max(
         SELECT
             m.gene,
             m.efo_id,
-            FIRST(m.mesh_id) FILTER (WHERE m.mesh_id IS NOT NULL) AS mesh_id,
-            FIRST(m.mesh_heading) FILTER (WHERE m.mesh_heading IS NOT NULL) AS mesh_heading,
-            FIRST(m.efo_term) FILTER (WHERE m.efo_term IS NOT NULL) AS efo_term,
+            MIN(m.mesh_id) AS mesh_id,
+            MIN(m.mesh_heading) AS mesh_heading,
+            MIN(m.efo_term) AS efo_term,
             MAX(m.phase) AS max_phase,
+            MAX(m.phase_concluded) AS max_phase_concluded,
+            {is_ongoing_sql("m.")} AS is_ongoing,
             (SELECT STRING_AGG(DISTINCT TRIM(src), '&' ORDER BY TRIM(src))
              FROM gd_sources_exploded g
              WHERE g.gene = m.gene
@@ -542,7 +695,15 @@ def _build_gene_indication_max(
     conn.unregister("gene_drug")
     conn.unregister("drug_indication")
 
-    log.info(f"  Gene-indication: {len(result):,}, genes: {result['gene'].nunique():,}")
+    if result.empty:
+        log.warning("  Gene-indication: 0 — gene-drug and drug-indication share no drugs")
+        return result
+
+    ongoing = int(result["is_ongoing"].sum())
+    log.info(
+        f"  Gene-indication: {len(result):,}, genes: {result['gene'].nunique():,}, "
+        f"undetermined at highest phase: {ongoing:,} ({100 * ongoing / len(result):.1f}%)",
+    )
     return result
 
 
@@ -550,6 +711,8 @@ def aggregate_clinical_trials(
     source_dir: Path,
     output_dir: Path,
     dgidb_drugs_path: Path | None = None,
+    *,
+    unknown_ongoing: bool = False,
 ):
     """Run full aggregation pipeline."""
     conn = _get_connection()
@@ -564,9 +727,23 @@ def aggregate_clinical_trials(
         log.error("No gene_drug sources found. Nothing to aggregate.")
         return
 
-    drug_id_mapping = _build_drug_id_mapping(conn, gd_paths, di_paths, drug_synonyms)
-    gene_drug = _build_gene_drug(conn, gd_paths, drug_id_mapping)
-    drug_indication = _build_drug_indication(conn, di_paths, drug_id_mapping)
+    drug_id_mapping, membership = _build_drug_id_mapping(conn, gd_paths, di_paths, drug_synonyms)
+    gene_drug, gene_drug_by_source = _build_gene_drug(conn, gd_paths, membership)
+    evidence_paths = {
+        name: path
+        for name, path in di_paths.items()
+        if name not in DRUG_INDICATION_EXCLUDED_SOURCES
+    }
+    if dropped := sorted(di_paths.keys() & DRUG_INDICATION_EXCLUDED_SOURCES):
+        log.info(f"Excluding from drug-indication evidence: {dropped}")
+    if unknown_ongoing:
+        log.info("Sensitivity arm: reading Unknown status as still running")
+    drug_indication, drug_indication_by_source = _build_drug_indication(
+        conn,
+        evidence_paths,
+        membership,
+        unknown_ongoing=unknown_ongoing,
+    )
     gene_indication_max = _build_gene_indication_max(conn, gene_drug, drug_indication)
 
     conn.close()
@@ -576,6 +753,11 @@ def aggregate_clinical_trials(
     gene_drug.to_parquet(output_dir / "gene_drug_mapping.parquet", index=False)
     drug_indication.to_parquet(output_dir / "drug_indication_mapping.parquet", index=False)
     gene_indication_max.to_parquet(output_dir / "gene_indication_max_phase.parquet", index=False)
+    gene_drug_by_source.to_parquet(output_dir / "gene_drug_by_source.parquet", index=False)
+    drug_indication_by_source.to_parquet(
+        output_dir / "drug_indication_by_source.parquet",
+        index=False,
+    )
     log.info(f"Saved to {output_dir}")
 
 
@@ -592,6 +774,11 @@ def main():
         help="Output directory (default: source_dir/aggregated)",
     )
     parser.add_argument("--dgidb-drugs", type=Path, help="DGIdb drugs.tsv for synonym matching")
+    parser.add_argument(
+        "--unknown-ongoing",
+        action="store_true",
+        help="Sensitivity arm: read Unknown trial status as still running, not concluded",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -612,10 +799,18 @@ def main():
         ct_inputs, output_dir = {}, Path()
 
     source_dir = args.source_dir or output_dir / "clinical_trials"
-    agg_output_dir = args.output_dir or source_dir / "aggregated"
+    # Its own directory: the sensitivity arm is not a drop-in replacement for the aggregate
+    # the benchmark reads, and would otherwise silently overwrite it.
+    default_name = "aggregated_unknown_ongoing" if args.unknown_ongoing else "aggregated"
+    agg_output_dir = args.output_dir or source_dir / default_name
     dgidb_drugs = args.dgidb_drugs or (Path(p) if (p := ct_inputs.get("dgidb_drugs")) else None)
 
-    aggregate_clinical_trials(source_dir, agg_output_dir, dgidb_drugs_path=dgidb_drugs)
+    aggregate_clinical_trials(
+        source_dir,
+        agg_output_dir,
+        dgidb_drugs_path=dgidb_drugs,
+        unknown_ongoing=args.unknown_ongoing,
+    )
 
 
 if __name__ == "__main__":

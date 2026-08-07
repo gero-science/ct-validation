@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Parse OpenTargets genetic evidence datasources to gene-disease associations.
 
-Uses association_by_datasource_direct, keeping only genetic evidence datasources
-(excluding drug/clinical, literature mining, model organism, and functional sources
-to avoid circular evidence with clinical trials datasets).
+Uses association_by_datasource_direct, restricted to germline variant-disease
+datasources; drug/clinical, text-mined (europepmc), model-organism and
+functional-genomics sources are excluded to avoid circular evidence with the clinical
+trials datasets. uniprot_literature is UniProt-curated variant evidence, not text
+mining, so it is kept.
+
+`--indirect` reads association_by_datasource_indirect, the ontology-propagated counterpart
+of the same table, and writes to a separate output; every other filter is unchanged, so the
+two outputs differ only in propagation.
 """
 
 import argparse
@@ -15,10 +21,9 @@ import yaml
 
 log = logging.getLogger(__name__)
 
-GENETIC_DATASOURCES = {
+GERMLINE_DATASOURCES = {
     "gwas_credible_sets",
     "eva",
-    "eva_somatic",
     "gene_burden",
     "genomics_england",
     "gene2phenotype",
@@ -26,12 +31,20 @@ GENETIC_DATASOURCES = {
     "uniprot_variants",
     "uniprot_literature",
     "orphanet",
-    "intogen",
 }
 
+# Opt-in: somatic mutations are not germline support for a target. Filtered before the
+# groupby, or a somatic score could win the max.
+SOMATIC_DATASOURCES = {"eva_somatic", "intogen"}
 
-def load_associations(association_dir: Path, min_score: float) -> pd.DataFrame:
-    """Load and filter OpenTargets associations to genetic evidence datasources only."""
+
+def load_associations(
+    association_dir: Path,
+    min_score: float,
+    *,
+    include_somatic: bool = False,
+) -> pd.DataFrame:
+    """Load and filter OpenTargets associations to germline genetic datasources."""
     log.info(f"Loading associations from {association_dir}")
     df = pd.read_parquet(
         association_dir,
@@ -40,7 +53,8 @@ def load_associations(association_dir: Path, min_score: float) -> pd.DataFrame:
     n_total = len(df)
 
     # Keep only genetic evidence datasources
-    df = df[df["datasourceId"].isin(GENETIC_DATASOURCES)]
+    datasources = GERMLINE_DATASOURCES | (SOMATIC_DATASOURCES if include_somatic else set())
+    df = df[df["datasourceId"].isin(datasources)]
     log.info(
         f"Kept {len(df):,}/{n_total:,} rows from genetic datasources: "
         f"{sorted(df['datasourceId'].unique())}",
@@ -71,9 +85,11 @@ def parse_opentargets(
     target_path: Path,
     output_path: Path,
     min_score: float = 0.5,
+    *,
+    include_somatic: bool = False,
 ) -> pd.DataFrame:
     """Parse OpenTargets genetic evidence associations to gene-disease pairs."""
-    df = load_associations(association_dir, min_score)
+    df = load_associations(association_dir, min_score, include_somatic=include_somatic)
 
     # Map ENSG to gene symbols
     ensg_to_symbol = load_target_mapping(target_path)
@@ -106,8 +122,23 @@ def main():
     parser.add_argument("--target", type=Path, help="OpenTargets target parquet directory")
     parser.add_argument("--output", type=Path, help="Output parquet path")
     parser.add_argument("--min-score", type=float, help="Minimum association score")
+    parser.add_argument(
+        "--indirect",
+        action="store_true",
+        help="Read the ontology-propagated association table instead of the direct one",
+    )
+    parser.add_argument(
+        "--include-somatic",
+        action="store_true",
+        help=f"Also keep somatic datasources ({', '.join(sorted(SOMATIC_DATASOURCES))})",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
+
+    if args.indirect and args.association_dir:
+        parser.error("--indirect and --association-dir both choose the input; pass only one")
+    if args.association_dir and not args.output:
+        parser.error("--association-dir requires --output; the default path is the direct table")
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -126,13 +157,19 @@ def main():
     else:
         ge_inputs, thresholds, output_dir = {}, {}, Path()
 
+    association_key = (
+        "opentargets_association_indirect" if args.indirect else "opentargets_association"
+    )
+    output_name = "opentargets_indirect.parquet" if args.indirect else "opentargets.parquet"
+
     parse_opentargets(
-        association_dir=args.association_dir or Path(ge_inputs.get("opentargets_association", "")),
+        association_dir=args.association_dir or Path(ge_inputs.get(association_key, "")),
         target_path=args.target or Path(ge_inputs.get("opentargets_target", "")),
-        output_path=args.output or output_dir / "genetic_evidence" / "opentargets.parquet",
+        output_path=args.output or output_dir / "genetic_evidence" / output_name,
         min_score=args.min_score
         if args.min_score is not None
         else thresholds.get("opentargets_min_score", 0.5),
+        include_somatic=args.include_somatic,
     )
 
 

@@ -1,0 +1,5 @@
+-e ../[plot]
+jupyterlab
+notebook
+ipykernel
+tidepool-theme

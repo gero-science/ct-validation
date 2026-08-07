@@ -69,8 +69,12 @@ def ct_validate(
     WITHOUT genetic evidence.
 
     Args:
-        clinical_trials: Gene-indication pairs with max clinical trial phase.
-            File path to parquet, or list of {"gene": str, "efo_id": str, "max_phase": int}.
+        clinical_trials: Gene-indication pairs with max clinical trial phase, one row per
+            pair — a repeated pair raises. File path to parquet, or list of
+            {"gene": str, "efo_id": str, "max_phase": int, "is_ongoing": bool}.
+            is_ongoing is optional and marks a pair still running at max_phase; such pairs
+            are censored from the transitions they have not completed, and count as
+            failures when the column is absent.
         targets: Genetic evidence for gene-indication pairs.
             File path to parquet, or list of {"gene": str, "efo_id": str}.
         similarity_lookup: EFO semantic similarity pairs (optional).

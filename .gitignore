@@ -20,6 +20,12 @@ venv/
 data/
 !src/ct_validation/data
 output/
+# ...except the benchmark's, which is the auditable record behind the paper's numbers.
+# CSVs and SVGs only: the PNGs are 85% of the weight, binary, and redundant with the SVGs.
+!notebooks/output/
+notebooks/output/figures/*.png
+notebooks/output/.ruff_cache/
+notebooks/output/diagnostics/
 *.parquet
 *.vcf.gz
 *.tsv.gz
@@ -27,6 +33,9 @@ output/
 
 # Results
 results/
+
+# Manuscript
+paper/
 
 # Jupyter
 .ipynb_checkpoints/

@@ -1,7 +1,64 @@
 """Shared test fixtures."""
 
+import importlib.util
+import sys
+from pathlib import Path
+
 import pandas as pd
 import pytest
+
+# scripts/parse/clinical_trials/ is a flat script directory (no package, no
+# __init__.py); its modules import each other as siblings (e.g. `import
+# trial_status` inside opentargets.py). Putting the directory on sys.path once,
+# here, lets test modules do the same plain `import trial_status` / `import
+# aggregate` and keeps this the single place that knows about that layout.
+_CT_SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "scripts" / "parse" / "clinical_trials"
+if str(_CT_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_CT_SCRIPTS_DIR))
+
+_PARSE_DIR = Path(__file__).resolve().parent.parent / "scripts" / "parse"
+_GENETIC_EVIDENCE_DIR = _PARSE_DIR / "genetic_evidence"
+
+
+def _load_module_from_path(module_name: str, path: Path):
+    """Import a module from an explicit file path, under a private module name.
+
+    scripts/parse/genetic_evidence/ ALSO has its own aggregate.py and opentargets.py
+    (distinct from the clinical_trials/ ones already on sys.path above). Adding this
+    directory to sys.path too would make `import aggregate` / `import opentargets`
+    ambiguous — picking whichever sys.path entry happens to come first — and could
+    silently break the clinical-trials tests. Loading by explicit file path sidesteps
+    sys.path, and the caller-supplied name keeps these out of sys.modules under a name
+    that could collide with the clinical_trials modules.
+    """
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="session")
+def ge_opentargets():
+    """The genetic-evidence scripts/parse/genetic_evidence/opentargets.py module."""
+    return _load_module_from_path("ge_opentargets", _GENETIC_EVIDENCE_DIR / "opentargets.py")
+
+
+@pytest.fixture(scope="session")
+def gwas_catalog():
+    """The scripts/parse/genetic_evidence/gwas_catalog.py module."""
+    return _load_module_from_path("ge_gwas_catalog", _GENETIC_EVIDENCE_DIR / "gwas_catalog.py")
+
+
+@pytest.fixture(scope="session")
+def gene_universe():
+    """The scripts/parse/gene_universe.py module."""
+    return _load_module_from_path("gene_universe", _PARSE_DIR / "gene_universe.py")
+
+
+@pytest.fixture(scope="session")
+def minikel():
+    """The scripts/parse/minikel.py module."""
+    return _load_module_from_path("minikel", _PARSE_DIR / "minikel.py")
 
 
 @pytest.fixture
