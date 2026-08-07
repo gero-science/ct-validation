@@ -176,19 +176,27 @@ def cluster_bootstrap_ci(
     success = np.asarray(success, dtype=bool).astype(float)
     has_evidence = np.asarray(has_evidence, dtype=bool)
 
-    # sort=True keys the cluster slots to the labels themselves rather than to the order the
-    # rows arrived in, so the draws below are a function of the data alone: the same table
-    # sorted differently returns the same interval from the same seed.
     # use_na_sentinel=False so nulls form their own cluster; the default -1 sentinel would
     # make the np.bincount calls below raise. Note that this is a modelling choice and not
     # only a mechanical one: every null-labelled row becomes a single large cluster that
     # dominates the resample, so pass a column without nulls where that matters.
-    codes, uniques = pd.factorize(cluster, sort=True, use_na_sentinel=False)
+    codes, uniques = pd.factorize(cluster, use_na_sentinel=False)
     n_clusters = len(uniques)
+
+    # Slots have to key to the labels themselves, not to the order the rows arrived in, or the
+    # draws below become a function of row order and one seed stops reproducing one interval.
+    # factorize(sort=True) does that for most dtypes but not for an object array mixing numbers
+    # with nulls, where pandas takes an argsort path that NaN silently defeats — so order the
+    # slots here instead. Any total order serves; str() is the one that exists for every dtype.
+    order = np.argsort(np.array([str(u) for u in uniques], dtype=object), kind="stable")
+    remap = np.empty(n_clusters, dtype=np.intp)
+    remap[order] = np.arange(n_clusters)
+    codes = remap[codes]
 
     # A one-cluster arm contributes no variance of its own — every replicate rebuilds it at
     # the same rate, since drawing it k times scales a and n1 alike and k cancels. The
-    # interval would then be a reading of the other arm only.
+    # interval would then be a reading of the other arm only. Two is the floor for a defined
+    # interval and not a claim that two suffice: coverage stays poor on a few dozen.
     min_clusters_per_arm = 2
     if min(len(np.unique(codes[has_evidence])), len(np.unique(codes[~has_evidence]))) < (
         min_clusters_per_arm

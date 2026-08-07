@@ -239,6 +239,67 @@ def test_bootstrap_is_reproducible_across_seeds():
     assert other.or_ci_upper == pytest.approx(first.or_ci_upper, rel=0.05)
 
 
+def _random_two_arm_rows(rng, n_clusters_per_arm=6, cluster_size=5):
+    """Random per-row successes over two equal-sized arms of same-size clusters."""
+    n_rows_per_arm = n_clusters_per_arm * cluster_size
+    success = rng.random(2 * n_rows_per_arm) < 0.5
+    has_evidence = np.array([True] * n_rows_per_arm + [False] * n_rows_per_arm)
+    cluster = np.repeat(np.arange(2 * n_clusters_per_arm), cluster_size)
+    return success, has_evidence, cluster
+
+
+def test_bootstrap_is_unaffected_by_a_shuffled_row_order():
+    """A shuffled permutation of the same rows returns an identical BootstrapCI."""
+    rng = np.random.default_rng(0)
+    success, has_evidence, cluster = _random_two_arm_rows(rng)
+    order = rng.permutation(len(success))
+
+    original = cluster_bootstrap_ci(success, has_evidence, cluster, n_replicates=300)
+    shuffled = cluster_bootstrap_ci(
+        success[order],
+        has_evidence[order],
+        cluster[order],
+        n_replicates=300,
+    )
+
+    assert shuffled == original
+
+
+def test_bootstrap_is_unaffected_by_a_reversed_row_order():
+    """Reversed row order returns an identical BootstrapCI."""
+    rng = np.random.default_rng(1)
+    success, has_evidence, cluster = _random_two_arm_rows(rng)
+
+    original = cluster_bootstrap_ci(success, has_evidence, cluster, n_replicates=300)
+    reversed_ = cluster_bootstrap_ci(
+        success[::-1],
+        has_evidence[::-1],
+        cluster[::-1],
+        n_replicates=300,
+    )
+
+    assert reversed_ == original
+
+
+def test_bootstrap_null_cluster_labels_are_also_unaffected_by_row_order():
+    """A shuffled row order still returns an identical BootstrapCI when some rows are unlabeled."""
+    rng = np.random.default_rng(2)
+    success, has_evidence, cluster = _random_two_arm_rows(rng)
+    cluster = np.array([f"GENE_{c}" for c in cluster], dtype=object)
+    cluster[::7] = None
+    order = rng.permutation(len(success))
+
+    original = cluster_bootstrap_ci(success, has_evidence, cluster, n_replicates=300)
+    shuffled = cluster_bootstrap_ci(
+        success[order],
+        has_evidence[order],
+        cluster[order],
+        n_replicates=300,
+    )
+
+    assert shuffled == original
+
+
 def test_bootstrap_accepts_non_boolean_flags():
     """0/1 integer columns resample as flags, not as row indices."""
     success, has_evidence = _make_rows(200, 500, 100, 500)

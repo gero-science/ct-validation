@@ -20,7 +20,7 @@ from ct_validation.validation import (
     woolf_ci_odds_ratio,
 )
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 
 __all__ = [
     "PHASE_NAMES",

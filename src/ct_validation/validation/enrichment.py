@@ -156,6 +156,8 @@ def calculate_enrichment(
     else:
         rr, rr_lower, rr_upper = katz_ci_risk_ratio(x_yes, n_yes, x_no, n_no)
         or_, or_lower, or_upper = woolf_ci_odds_ratio(x_yes, n_yes, x_no, n_no)
+        # Row-level throughout: cluster_col adds wider bootstrap intervals alongside, but leaves
+        # this test on the observed table, so a clustered run still reports an unclustered p-value.
         p_value = fisher_exact_pvalue(x_yes, n_yes, x_no, n_no)
 
         if cluster_col is not None:

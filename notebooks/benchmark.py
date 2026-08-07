@@ -106,11 +106,13 @@ CT_DI_SOURCES = {"OpenTargets": "opentargets", "TrialPanorama": "trialpanorama"}
 
 
 # %% Helpers
-def run_multi(experiments: dict[str, tuple], label_col="experiment", *, bootstrap=False):
+def run_multi(
+    experiments: dict[str, tuple], label_col="experiment", *, bootstrap=False, cluster_col="gene"
+):
     """Run validate() for multiple (targets, clinical_trials) pairs.
 
-    `bootstrap` adds gene-clustered CIs for both ratios. Off by default: it costs a
-    resampling pass per transition, and only the headline design of §2 is asked to
+    `bootstrap` adds clustered CIs for both ratios, resampling `cluster_col`. Off by default:
+    it costs a resampling pass per transition, and only the headline design of §2 is asked to
     defend its intervals against one gene spanning many indications.
     """
     results = []
@@ -118,7 +120,7 @@ def run_multi(experiments: dict[str, tuple], label_col="experiment", *, bootstra
         r = validate(
             clinical_trials=ct,
             targets=ge,
-            cluster_col="gene" if bootstrap else None,
+            cluster_col=cluster_col if bootstrap else None,
             **VALIDATE_KWARGS,
         )
         r[label_col] = name
@@ -412,6 +414,46 @@ comparison_3x3_both = pd.concat(
 comparison_3x3_both.to_csv(OUTPUT / "comparison_3x3.csv", index=False)
 
 # %% [markdown]
+# ### Which unit carries the correlation
+#
+# The clustered intervals above resample genes, on the argument that one gene spans many
+# indications. Indication is the competing candidate, and the stronger one here: an outcome is
+# the maximum phase of a drug, so two rows under different genes driven by the same
+# drug-indication carry the same outcome, which resampling genes cannot see.
+#
+# Both arms below are the headline configuration, differing only in what is resampled.
+
+# %%
+cluster_sensitivity = pd.concat(
+    [
+        run_multi(
+            {"Combined GE × Combined CT": (GE_COMBINED, CLINICAL_TRIALS)},
+            bootstrap=True,
+            cluster_col=col,
+        ).assign(cluster=col)
+        for col in ("gene", "efo_id")
+    ],
+    ignore_index=True,
+)
+cluster_sensitivity.to_csv(OUTPUT / "cluster_sensitivity.csv", index=False)
+
+# Widening against the Katz interval each bootstrap is asked to correct, on the log scale.
+print(
+    cluster_sensitivity.assign(
+        katz=lambda d: np.log(d["rr_ci_upper"] / d["rr_ci_lower"]),
+        boot=lambda d: np.log(d["rr_boot_ci_upper"] / d["rr_boot_ci_lower"]),
+    )
+    .assign(widening=lambda d: d["boot"] / d["katz"])
+    .pivot_table(
+        index="phase_label",
+        columns="cluster",
+        values=["rr_boot_ci_lower", "rr_boot_ci_upper", "widening"],
+    )
+    .round(4)
+    .to_string(),
+)
+
+# %% [markdown]
 # ## 3. Per genetic evidence source
 #
 # Each GE source separately, against the three trial tables of §2.
@@ -514,12 +556,20 @@ print(
 # gene-drug panel holds the indication leg fixed by necessity.
 
 # %%
+# Bound rather than inlined so §5 can profile them: holding seven arms resident costs memory
+# through the rest of the notebook, which is still cheaper than re-aggregating each one.
+CT_GD_ARMS = {
+    name: rebuild_ct([prefix], list(CT_DI_SOURCES.values()))
+    for name, prefix in CT_GD_SOURCES.items()
+}
+CT_DI_ARMS = {
+    name: rebuild_ct(list(CT_GD_SOURCES.values()), [prefix])
+    for name, prefix in CT_DI_SOURCES.items()
+}
+
 gd_comparison = run_multi(
     {
-        **{
-            name: (GE_COMBINED, rebuild_ct([prefix], list(CT_DI_SOURCES.values())))
-            for name, prefix in CT_GD_SOURCES.items()
-        },
+        **{name: (GE_COMBINED, ct) for name, ct in CT_GD_ARMS.items()},
         "All": (GE_COMBINED, CLINICAL_TRIALS),
     },
     label_col="source",
@@ -528,10 +578,7 @@ gd_comparison["ct_dimension"] = "gene_drug"
 
 di_comparison = run_multi(
     {
-        **{
-            name: (GE_COMBINED, rebuild_ct(list(CT_GD_SOURCES.values()), [prefix]))
-            for name, prefix in CT_DI_SOURCES.items()
-        },
+        **{name: (GE_COMBINED, ct) for name, ct in CT_DI_ARMS.items()},
         "All": (GE_COMBINED, CLINICAL_TRIALS),
     },
     label_col="source",
@@ -666,6 +713,43 @@ drug_indication_profile.to_csv(OUTPUT / "ct_drug_indication_profile.csv", index=
 print(gene_drug_profile.to_string(index=False))
 print()
 print(drug_indication_profile.to_string(index=False))
+
+
+# %% [markdown]
+# ### Pairs by maximum phase, per source
+#
+# The two profiles above count each source's own drug-indication records. This counts
+# gene-indication pairs — the unit the enrichment denominators are in — at the highest phase
+# that source's arm carries them to. The gene-drug join turns one drug-indication into many
+# gene-indication pairs, so these run an order of magnitude higher than the record counts.
+#
+# `arm_pairs` is the arm's whole table: before the gene-universe restriction and before
+# censoring, so it is larger than the matching `n_yes + n_no` in §4 and the two do not
+# reconcile by subtraction. `max_phase_1..4` partition it; `ongoing` cuts across them, being
+# the pairs `is_ongoing` marks unsettled, and is never set at phase 4.
+#
+# Each row is §4's arm.
+
+# %%
+ct_pair_phase_profile = pd.DataFrame(
+    [
+        {
+            "leg": leg,
+            "source": name,
+            "arm_pairs": len(ct),
+            **{f"max_phase_{p}": int((ct["max_phase"] == p).sum()) for p in (1, 2, 3, 4)},
+            "ongoing": int(ct["is_ongoing"].sum()),
+        }
+        for leg, arms in (
+            ("gene-drug", CT_GD_ARMS),
+            ("drug-indication", CT_DI_ARMS),
+            ("all", {"aggregate": ct_all}),
+        )
+        for name, ct in arms.items()
+    ],
+)
+ct_pair_phase_profile.to_csv(OUTPUT / "ct_pair_phase_profile.csv", index=False)
+print(ct_pair_phase_profile.to_string(index=False))
 
 # %% [markdown]
 # ### Source licences

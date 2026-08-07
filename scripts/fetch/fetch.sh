@@ -184,7 +184,7 @@ main() {
     echo "Done."
     if [[ -z "${1:-}" ]]; then
         echo "Mappings (OxO, UKB manifest) and the Genebass associations ship in the data release:"
-        echo "  https://doi.org/10.5281/zenodo.21839217"
+        echo "  https://doi.org/10.5281/zenodo.21839216"
         echo "Gene universe: python scripts/parse/gene_universe.py"
     fi
 }

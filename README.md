@@ -174,9 +174,16 @@ results = ctv.validate(..., cluster_col="gene")
 
 This adds four columns — `rr_boot_ci_lower`, `rr_boot_ci_upper`, `or_boot_ci_lower`, `or_boot_ci_upper` — and nothing else: resampling only re-estimates spread, so point estimates, counts and closed-form intervals are unchanged. Without `cluster_col` they are absent, so the default schema is the table above.
 
+`p_value` is unaffected: it stays a row-level Fisher's exact test on the observed table, so it does not
+carry the clustering the intervals do.
+
 `bootstrap_replicates` (default 10,000) and `bootstrap_seed` (default 0) control the resampling. The percentile bounds carry Monte Carlo error falling as `1/√n`; at the default each bound shifts by a few percent of the interval's width across seeds. Both are ignored without `cluster_col`.
 
 No continuity correction is applied, unlike the closed-form intervals — a percentile bootstrap needs neither `log(ratio)` nor its standard error. A replicate that empties a cell keeps its ratio, so **a bound may come back `0` or infinite**; relevant if you log-scale these columns.
+
+Two clusters per arm is the floor for a defined interval, not a threshold at which one is
+trustworthy — a percentile cluster bootstrap undercovers badly on a few dozen clusters, so read bounds from a small
+cluster count as indicative.
 
 Bounds are `NaN` when an arm holds fewer than two clusters, when the observed table has a zero cell, or when over 25% of replicates leave a ratio undefined (`0/0`) — past 5% you get a `BootstrapReplicateLossWarning`. The closed-form columns stay populated unless an arm is empty outright (`n_yes=0` or `n_no=0`).
 
@@ -291,8 +298,8 @@ uv run pytest tests/ -v
 | Resource                 | Location                                                                        |
 | ------------------------ | ------------------------------------------------------------------------------- |
 | Source code              | https://github.com/gero-science/ct-validation                                    |
-| Archived code snapshot   | [10.5281/zenodo.21840866](https://doi.org/10.5281/zenodo.21840866)               |
-| Benchmark data           | [10.5281/zenodo.21839217](https://doi.org/10.5281/zenodo.21839217)               |
+| Archived code (all versions) | [10.5281/zenodo.21840865](https://doi.org/10.5281/zenodo.21840865)           |
+| Benchmark data (all versions) | [10.5281/zenodo.21839216](https://doi.org/10.5281/zenodo.21839216)          |
 | Package                  | [PyPI](https://pypi.org/project/ct-validation/)                                  |
 
 The data deposit carries every input `notebooks/benchmark.py` reads. Extract it at the repository

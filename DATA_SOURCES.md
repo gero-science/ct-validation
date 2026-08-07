@@ -5,7 +5,7 @@ data release ships.
 
 ## Data release
 
-The release archive ([10.5281/zenodo.21839217](https://doi.org/10.5281/zenodo.21839217)) carries
+The release archive ([10.5281/zenodo.21839216](https://doi.org/10.5281/zenodo.21839216)) carries
 everything `notebooks/benchmark.py` reads, so the benchmark runs without re-fetching anything:
 
 | Path                              | Contents                                                                                      |
