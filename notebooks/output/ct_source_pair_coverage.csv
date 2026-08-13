@@ -2,8 +2,8 @@ leg,source,pairs,genes,efo_ids
 gene-drug,ChEMBL,249987,1213,4039
 gene-drug,DGIdb,1548145,4083,4556
 gene-drug,STITCH,913664,2364,4175
-gene-drug,OpenTargets,238069,1515,4354
+gene-drug,Open Targets,238069,1515,4354
 gene-drug,TrialPanorama,183353,735,3865
-drug-indication,OpenTargets,723016,4681,2611
+drug-indication,Open Targets,723016,4681,2611
 drug-indication,TrialPanorama,1899146,5124,3427
 all,aggregate,2236441,5336,4568

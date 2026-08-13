@@ -50,7 +50,7 @@ z
      </g>
     </g>
     <g id="text_3">
-     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="155.629818" y="184.729687" transform="rotate(-0 155.629818 184.729687)">Risk Ratio</text>
+     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="155.629818" y="184.729687" transform="rotate(-0 155.629818 184.729687)">Relative Success</text>
     </g>
    </g>
    <g id="matplotlib.axis_2">
@@ -63,7 +63,7 @@ z
     <g id="ytick_2">
      <g id="line2d_4"/>
      <g id="text_5">
-      <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="92.04" y="129.179602" transform="rotate(-0 92.04 129.179602)">OpenTargets</text>
+      <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="92.04" y="129.179602" transform="rotate(-0 92.04 129.179602)">Open Targets</text>
      </g>
     </g>
     <g id="ytick_3">
@@ -200,7 +200,7 @@ z
      </g>
     </g>
     <g id="text_20">
-     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="447.949818" y="184.729687" transform="rotate(-0 447.949818 184.729687)">Risk Ratio</text>
+     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="447.949818" y="184.729687" transform="rotate(-0 447.949818 184.729687)">Relative Success</text>
     </g>
    </g>
    <g id="matplotlib.axis_4">
@@ -213,7 +213,7 @@ z
     <g id="ytick_8">
      <g id="line2d_15"/>
      <g id="text_22">
-      <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="384.36" y="95.726875" transform="rotate(-0 384.36 95.726875)">OpenTargets</text>
+      <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="384.36" y="95.726875" transform="rotate(-0 384.36 95.726875)">Open Targets</text>
      </g>
     </g>
     <g id="ytick_9">

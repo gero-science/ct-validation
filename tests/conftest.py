@@ -50,6 +50,12 @@ def gwas_catalog():
 
 
 @pytest.fixture(scope="session")
+def genebass():
+    """The scripts/parse/genetic_evidence/genebass.py module."""
+    return _load_module_from_path("ge_genebass", _GENETIC_EVIDENCE_DIR / "genebass.py")
+
+
+@pytest.fixture(scope="session")
 def gene_universe():
     """The scripts/parse/gene_universe.py module."""
     return _load_module_from_path("gene_universe", _PARSE_DIR / "gene_universe.py")

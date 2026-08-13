@@ -31,8 +31,8 @@ def parse_genebass(
     log.info(f"Loaded {len(df):,} associations")
 
     # Filter by p-value
-    df = df[df["Pvalue"] <= max_pvalue].copy()
-    log.info(f"After p-value <= {max_pvalue}: {len(df):,}")
+    df = df[df["Pvalue"] < max_pvalue].copy()
+    log.info(f"After p-value < {max_pvalue}: {len(df):,}")
 
     # Load phenotype manifest for EFO mapping
     log.info(f"Loading phenotype manifest from {manifest_path}")

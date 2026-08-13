@@ -72,7 +72,7 @@ GE_OPENTARGETS = GE_DIR / "opentargets.parquet"
 GE_SOURCES = {
     "GWAS Catalog": GE_DIR / "gwas_catalog.parquet",
     "ClinVar": GE_DIR / "clinvar.parquet",
-    "OpenTargets": GE_OPENTARGETS,
+    "Open Targets": GE_OPENTARGETS,
     "Genebass": GE_DIR / "genebass.parquet",
 }
 GE_COMBINED = GE_DIR / "aggregated" / "genetic_evidence.parquet"
@@ -97,17 +97,21 @@ CT_GD_SOURCES = {
     "ChEMBL": "chembl",
     "DGIdb": "dgidb",
     "STITCH": "stitch",
-    "OpenTargets": "opentargets",
+    "Open Targets": "opentargets",
     "TrialPanorama": "trialpanorama",
 }
 # ChEMBL is absent here on purpose: its indications carry no trial status, so the
 # aggregate excludes them (DRUG_INDICATION_EXCLUDED_SOURCES). It stays in CT_GD_SOURCES.
-CT_DI_SOURCES = {"OpenTargets": "opentargets", "TrialPanorama": "trialpanorama"}
+CT_DI_SOURCES = {"Open Targets": "opentargets", "TrialPanorama": "trialpanorama"}
 
 
 # %% Helpers
 def run_multi(
-    experiments: dict[str, tuple], label_col="experiment", *, bootstrap=False, cluster_col="gene"
+    experiments: dict[str, tuple],
+    label_col="experiment",
+    *,
+    bootstrap=False,
+    cluster_col="gene",
 ):
     """Run validate() for multiple (targets, clinical_trials) pairs.
 
@@ -273,7 +277,7 @@ GE_ARMS = {
     "Open Targets GE": GE_OPENTARGETS,
 }
 CT_ARMS = {
-    "Citeline": minikel_ct,
+    "Citeline CT": minikel_ct,
     "Open Targets CT": ct_ot_only,
     "Combined CT": CLINICAL_TRIALS,
 }
@@ -292,7 +296,7 @@ minikel_published = pd.read_parquet(
     MINIKEL_DIR / "minikel_enrichment_results.parquet",
 )
 minikel_published = minikel_published[minikel_published["area"] == "all"]
-our_replication = comparison_3x3[comparison_3x3["experiment"] == "Minikel et al. GE × Citeline"]
+our_replication = comparison_3x3[comparison_3x3["experiment"] == "Minikel et al. GE × Citeline CT"]
 
 phase_map = {"I": "I→II", "II": "II→III", "III": "III→Approved", "I-Launch": "I→Approved"}
 print(f"{'Phase':<15} {'Minikel (MESH)':>15} {'Ours (EFO)':>12} {'Gap':>8}")
@@ -386,6 +390,9 @@ for ax, phase in zip(flat_ax := axes.flatten(), PHASE_ORDER):
         ax=ax,
         sort_order=list(comparison.keys())[::-1],
     )
+    # forest_plot labels the axis by estimator; across a phase transition that risk ratio is
+    # what Nelson et al. and Minikel et al. call relative success.
+    ax.set_xlabel("Relative Success")
     if ax in (flat_ax[1], flat_ax[3]):
         ax.set_yticklabels([])
     ax.tick_params(axis="y", labelsize=10)
@@ -488,6 +495,7 @@ for ax, ct_name in zip(axes, GE_VS_CT):
         ax=ax,
         sort_order=order,
     )
+    ax.set_xlabel("Relative Success")
     # Row order is set by the first panel and shared by the other two.
     order = order or [t.get_text() for t in ax.get_yticklabels()]
 axes[0].sharex(axes[1])
@@ -611,6 +619,7 @@ for ax, panel, title in (
         # `All` pinned to the bottom as the anchor, the rest by effect size.
         sort_order=[*(s for s in by_rr if s != "All"), "All"],
     )
+    ax.set_xlabel("Relative Success")
 fig.tight_layout()
 savefig(fig, "s3_ct_sources")
 
@@ -680,7 +689,7 @@ with duckdb.connect() as con:
                count(DISTINCT gene) AS genes,
                count(DISTINCT our_drug_id) AS drugs,
                count(DISTINCT our_drug_id) FILTER (WHERE action_type IS NOT NULL)
-                   AS drugs_with_moa
+                   AS drugs_with_action_type
         FROM read_parquet('{GD_BY_SOURCE}')
         WHERE gene IS NOT NULL
         GROUP BY 1, 2
@@ -706,6 +715,11 @@ with duckdb.connect() as con:
         ORDER BY records DESC
         """,
     ).fetchdf()
+
+# These two read `source` from the parquet, where aggregate.py writes its own tags; every
+# other table here is keyed by the display names above.
+for profile in (gene_drug_profile, drug_indication_profile):
+    profile["source"] = profile["source"].replace({"OpenTargets": "Open Targets"})
 
 # Kept apart rather than concatenated: the two legs carry disjoint columns.
 gene_drug_profile.to_csv(OUTPUT / "ct_gene_drug_profile.csv", index=False)
@@ -760,7 +774,7 @@ print(ct_pair_phase_profile.to_string(index=False))
 # %%
 ct_source_licences = pd.DataFrame(
     [
-        ("OpenTargets", "CC0 1.0", "known_drug is ChEMBL-derived; the Platform output is CC0"),
+        ("Open Targets", "CC0 1.0", "known_drug is ChEMBL-derived; the Platform output is CC0"),
         ("TrialPanorama", "Apache 2.0", "HuggingFace dataset card only; no LICENSE file"),
         ("ChEMBL", "CC BY-SA 3.0", "share-alike propagates to any redistributed derivative"),
         (
@@ -773,8 +787,8 @@ ct_source_licences = pd.DataFrame(
             "DGIdb",
             "code MIT; data per upstream source",
             "interactions carry the licences of the sources DGIdb aggregates, some "
-            "non-commercial; the parser drops interaction_source_db_name, so they cannot be "
-            "separated after parsing",
+            "non-commercial; the parser drops interaction_source_db_name, recoverable from the "
+            "raw interactions.tsv of the pinned 2024-Dec release",
         ),
     ],
     columns=["source", "license", "note"],
@@ -787,19 +801,19 @@ ge_source_licences = pd.DataFrame(
         (
             "GWAS Catalog",
             "EMBL-EBI terms; none named",
-            "EMBL-EBI 'places no additional restrictions on the use or redistribution of the "
-            "data ... other than those provided by the original data owners'",
+            "EMBL-EBI ‘places no additional restrictions on the use or redistribution of the "
+            "data ... other than those provided by the original data owners’",
         ),
         (
             "ClinVar",
             "US public domain; none named",
-            "'NCBI itself places no restrictions on the use or distribution of the data "
-            "contained therein'; submitters may hold rights, attribution requested",
+            "‘NCBI itself places no restrictions on the use or distribution of the data "
+            "contained therein’; submitters may hold rights, attribution requested",
         ),
-        ("OpenTargets", "CC0 1.0", "association_by_datasource_direct, same 25.12 release"),
+        ("Open Targets", "CC0 1.0", "association_by_datasource_direct, same 25.12 release"),
         (
             "Genebass",
-            "none stated — unclear",
+            "none stated (unclear)",
             "public bulk downloads of UK Biobank-derived summary statistics; the paper names no "
             "licence. Hail/GCS is an access burden, not a restriction",
         ),
@@ -825,11 +839,12 @@ source_licences
 
 
 # %%
-def pair_coverage(column: str, sources: list[str], leg: str) -> pd.DataFrame:
+def pair_coverage(column: str, sources: dict[str, str], leg: str) -> pd.DataFrame:
     """Gene-indication pairs of the aggregate that each source contributed to."""
     rows = []
-    for src in sources:
-        subset = filter_ct_by(ct_all, column, src)
+    for src, prefix in sources.items():
+        # The `&`-joined column carries aggregate.py's own tags, not these display labels.
+        subset = filter_ct_by(ct_all, column, aggregate.SOURCE_DISPLAY_NAMES[prefix])
         rows.append(
             {
                 "leg": leg,
@@ -844,8 +859,8 @@ def pair_coverage(column: str, sources: list[str], leg: str) -> pd.DataFrame:
 
 ct_pair_coverage = pd.concat(
     [
-        pair_coverage("gene_drug_sources", list(CT_GD_SOURCES), "gene-drug"),
-        pair_coverage("drug_indication_sources", list(CT_DI_SOURCES), "drug-indication"),
+        pair_coverage("gene_drug_sources", CT_GD_SOURCES, "gene-drug"),
+        pair_coverage("drug_indication_sources", CT_DI_SOURCES, "drug-indication"),
         pd.DataFrame(
             [
                 {
@@ -865,6 +880,15 @@ ct_pair_coverage
 
 
 # %%
+# The `&`-joined source columns carry aggregate.py's own display names, where Open Targets is
+# one word. Relabel for the UpSet panels so they read like every other figure and table.
+UPSET_LABELS = {"OpenTargets": "Open Targets"}
+
+
+def _upset_members(combo: str) -> list[str]:
+    return [UPSET_LABELS.get(s, s) for s in combo.split("&")]
+
+
 def make_upset_df(
     df: pd.DataFrame,
     source_col: str,
@@ -881,14 +905,15 @@ def make_upset_df(
     per-source totals match `ct_source_pair_coverage.csv`. Summing them off the returned
     frame instead would understate any source whose smaller combinations were cut.
     """
-    all_sources = sorted({s for combo in df[source_col] for s in combo.split("&")})
+    all_sources = sorted({s for combo in df[source_col] for s in _upset_members(combo)})
     counts = df[source_col].value_counts()
     set_sizes = {
-        s: int(sum(c for combo, c in counts.items() if s in combo.split("&"))) for s in all_sources
+        s: int(sum(c for combo, c in counts.items() if s in _upset_members(combo)))
+        for s in all_sources
     }
     rows = []
     for i, (combo_str, count) in enumerate(counts.items()):
-        members = frozenset(combo_str.split("&"))
+        members = frozenset(_upset_members(combo_str))
         if count >= min_size and (n_intersections is None or i < n_intersections):
             rows.append(
                 {"members": members, "count": count, **{s: s in members for s in all_sources}},
@@ -1054,12 +1079,12 @@ fig = plot_upset(di_upset, wspace=0.5)
 savefig(fig, "s2_di_upset")
 
 # %% [markdown]
-# ## 6. OpenTargets genetic evidence per subsource
+# ## 6. Open Targets genetic evidence per subsource
 #
-# OpenTargets genetic evidence by datasource, I→Approved against `ct_ot_only` (§2) — Open
+# Open Targets genetic evidence by datasource, I→Approved against `ct_ot_only` (§2) — Open
 # Targets alone, so phases and censoring are that source's own.
 #
-# `overall` pools every OpenTargets evidence type, including the `chembl` known-drug channel,
+# `overall` pools every Open Targets evidence type, including the `chembl` known-drug channel,
 # which encodes the outcome being predicted.
 #
 # **Note:** This section requires raw Open Targets Platform 25.12 data
@@ -1114,50 +1139,7 @@ ot_subsource_results = pd.concat(subsource_threshold_results, ignore_index=True)
 ot_subsource_results.to_csv(OUTPUT / "ot_subsource_comparison.csv", index=False)
 
 # %%
-fig, axes = plt.subplots(2, 2, figsize=(12, 8.3))
-for ax, threshold in zip(axes.flatten(), [0, 0.25, 0.5, 0.75]):
-    phase_df = ot_subsource_results[
-        (ot_subsource_results["phase_label"] == "I→Approved")
-        & (ot_subsource_results["threshold"] == threshold)
-    ]
-    # Drop empty results and sort by RR ascending, "overall" on top
-    phase_df = phase_df[phase_df["n_yes"] > 0]
-    phase_df = phase_df.sort_values("rr", ascending=True).reset_index(drop=True)
-    non_overall = phase_df[phase_df["subsource"] != "overall"]
-    overall_row = phase_df[phase_df["subsource"] == "overall"]
-    phase_df = pd.concat([non_overall, overall_row], ignore_index=True)
-    forest_plot(
-        phase_df,
-        "subsource",
-        "I→Approved",
-        title=f"score ≥ {threshold}",
-        ax=ax,
-        sort_order=phase_df["subsource"].tolist(),
-    )
-    # Highlight "overall" with second palette color
-    labels = [t.get_text() for t in ax.get_yticklabels()]
-    if "overall" in labels:
-        c2 = plt.rcParams["axes.prop_cycle"].by_key()["color"][1]
-        idx = labels.index("overall")
-        row = overall_row.iloc[0]
-        ax.errorbar(
-            row["rr"],
-            idx,
-            xerr=[[row["rr"] - row["rr_ci_lower"]], [row["rr_ci_upper"] - row["rr"]]],
-            fmt="o",
-            color=c2,
-            zorder=5,
-        )
-    ax.set_xscale("log", base=2)
-fig.tight_layout()
-savefig(fig, "s4_ot_subsources")
-
-# %% [markdown]
-# ### 6b: Germline genetic OT datasources at different per-datasource score thresholds
-
-# %%
-# Mirrors GERMLINE_DATASOURCES in scripts/parse/genetic_evidence/opentargets.py so the
-# max below matches the shipped parquet.
+# Mirrors GERMLINE_DATASOURCES in scripts/parse/genetic_evidence/opentargets.py
 GERMLINE_DATASOURCES = {
     "gwas_credible_sets",
     "eva",
@@ -1170,6 +1152,43 @@ GERMLINE_DATASOURCES = {
     "orphanet",
 }
 
+fig, axes = plt.subplots(2, 2, figsize=(12, 8.3))
+for ax, threshold in zip(axes.flatten(), [0, 0.25, 0.5, 0.75]):
+    phase_df = ot_subsource_results[
+        (ot_subsource_results["phase_label"] == "I→Approved")
+        & (ot_subsource_results["threshold"] == threshold)
+    ]
+    # chembl and the OT overall score aggregate drug-derived evidence, so approved pairs carry
+    # them by construction. Their comparison arms are empty wherever the RS runs to thousands
+    # (chembl at score >= 0.25 and >= 0.5, overall at >= 0.25), making it a Haldane artefact.
+    # Both stay in ot_subsource_comparison.csv.
+    phase_df = phase_df[
+        (phase_df["n_yes"] > 0)
+        & phase_df["rr"].notna()
+        & ~phase_df["subsource"].isin(["chembl", "overall"])
+    ]
+    phase_df = phase_df.sort_values("rr", ascending=True).reset_index(drop=True)
+    forest_plot(
+        phase_df,
+        "subsource",
+        "I→Approved",
+        title=f"score ≥ {threshold}",
+        ax=ax,
+        sort_order=phase_df["subsource"].tolist(),
+    )
+    for lbl in ax.get_yticklabels():
+        if lbl.get_text() in GERMLINE_DATASOURCES:
+            lbl.set_fontweight("bold")
+    ax.tick_params(axis="y", labelsize=10)
+    ax.set_xscale("log", base=2)
+    ax.set_xlabel("Relative Success")
+fig.tight_layout()
+savefig(fig, "s4_ot_subsources")
+
+# %% [markdown]
+# ### 6b: Germline genetic OT datasources at different per-datasource score thresholds
+
+# %%
 ot_genetic = ot_by_ds[ot_by_ds["datasourceId"].isin(GERMLINE_DATASOURCES)]
 
 genetic_threshold_results = []
@@ -1204,6 +1223,7 @@ forest_plot(
     "I→Approved",
     ax=ax,
 )
+ax.set_xlabel("Relative Success")
 fig.tight_layout()
 savefig(fig, "s5_ot_genetic_thresholds")
 
@@ -1219,7 +1239,7 @@ savefig(fig, "s5_ot_genetic_thresholds")
 # %%
 SIMILARITY_THRESHOLDS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 SWEEP_ARMS = {
-    "Minikel et al. GE × Citeline": (minikel_ge, minikel_ct),
+    "Minikel et al. GE × Citeline CT": (minikel_ge, minikel_ct),
     "Open Targets GE × Open Targets CT": (GE_OPENTARGETS, ct_ot_only),
     "Combined GE × Combined CT": (GE_COMBINED, CLINICAL_TRIALS),
 }
@@ -1255,6 +1275,7 @@ for ax, arm in zip(axes, SWEEP_ARMS):
         sort_order=[str(t) for t in SIMILARITY_THRESHOLDS],
     )
     ax.set_title(arm, fontsize=10)
+    ax.set_xlabel("Relative Success")
 axes[0].sharex(axes[1])
 axes[0].set_ylim(-0.5, axes[0].get_ylim()[1] + 0.5)
 fig.tight_layout()
@@ -1344,7 +1365,10 @@ for ax, arm in zip(axes, SWEEP_ARMS):
         sort_order=onc_order,
     )
     ax.set_title(arm, fontsize=11)
-    # forest_plot draws one legend per axes; the figure carries a single one instead.
+    ax.set_xlabel("Relative Success")
+    for container in ax.containers:
+        if container.get_label() == "without oncology":
+            container.lines[0].set_marker("s")
     ax.get_legend().remove()
 axes[0].sharex(axes[1])
 
@@ -1417,7 +1441,7 @@ def gwas_credible_sets(min_score: float = 0.0) -> pd.DataFrame:
 
 PRIOR_ART_GE = {
     "GWAS credible sets, propagated ≥ 0.5": gwas_credible_sets(0.5),
-    "OpenTargets GE, direct ≥ 0.5": GE_SOURCES["OpenTargets"],
+    "Open Targets GE, direct ≥ 0.5": GE_SOURCES["Open Targets"],
     "Combined GE": GE_COMBINED,
 }
 
@@ -1498,18 +1522,18 @@ comparison_panel = pd.concat(
     ignore_index=True,
 )
 
-fig, axes = plt.subplots(1, 2, figsize=(8.3, 2.5))
+fig, axes = plt.subplots(1, 2, figsize=(8.3, 2.5), sharey=True)
 for ax, metric in zip(axes, ["rr", "or"]):
     forest_plot(
         comparison_panel,
         "label",
         metric=metric,
-        title=f"{'RS' if metric == 'rr' else 'OR'} vs Tsepilov et al.",
         ax=ax,
         sort_order=comparison_panel["label"].tolist()[::-1],
     )
+    ax.set_xlabel("Relative Success" if metric == "rr" else "Odds Ratio")
+
 axes[0].set_ylim(-0.5, axes[0].get_ylim()[1] + 0.5)
-axes[1].set_yticklabels([])
 fig.tight_layout()
 savefig(fig, "s8_prior_art_comparison")
 

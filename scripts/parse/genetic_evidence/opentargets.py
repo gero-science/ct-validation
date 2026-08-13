@@ -160,7 +160,10 @@ def main():
     association_key = (
         "opentargets_association_indirect" if args.indirect else "opentargets_association"
     )
-    output_name = "opentargets_indirect.parquet" if args.indirect else "opentargets.parquet"
+    # Somatic runs take their own stem: the default name is the germline file the headline
+    # analysis reads, so sharing it would overwrite that input in place.
+    stem = "opentargets_indirect" if args.indirect else "opentargets"
+    output_name = f"{stem}_with_somatic.parquet" if args.include_somatic else f"{stem}.parquet"
 
     parse_opentargets(
         association_dir=args.association_dir or Path(ge_inputs.get(association_key, "")),

@@ -56,7 +56,7 @@ z
      </g>
     </g>
     <g id="text_4">
-     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="142.437769" y="155.929688" transform="rotate(-0 142.437769 155.929688)">Risk Ratio</text>
+     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="142.437769" y="155.929688" transform="rotate(-0 142.437769 155.929688)">Relative Success</text>
     </g>
    </g>
    <g id="matplotlib.axis_2">
@@ -75,7 +75,7 @@ z
     <g id="ytick_3">
      <g id="line2d_6"/>
      <g id="text_7">
-      <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="93.429375" y="71.714706" transform="rotate(-0 93.429375 71.714706)">OpenTargets</text>
+      <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="93.429375" y="71.714706" transform="rotate(-0 93.429375 71.714706)">Open Targets</text>
      </g>
     </g>
     <g id="ytick_4">
@@ -180,7 +180,7 @@ z
      </g>
     </g>
     <g id="text_17">
-     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="303.382199" y="155.929688" transform="rotate(-0 303.382199 155.929688)">Risk Ratio</text>
+     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="303.382199" y="155.929688" transform="rotate(-0 303.382199 155.929688)">Relative Success</text>
     </g>
    </g>
    <g id="matplotlib.axis_4">
@@ -273,7 +273,7 @@ z
      </g>
     </g>
     <g id="text_25">
-     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="464.326628" y="155.929688" transform="rotate(-0 464.326628 155.929688)">Risk Ratio</text>
+     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="464.326628" y="155.929688" transform="rotate(-0 464.326628 155.929688)">Relative Success</text>
     </g>
    </g>
    <g id="matplotlib.axis_6">

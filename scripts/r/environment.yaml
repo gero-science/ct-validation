@@ -5,4 +5,4 @@ dependencies:
     - r-base>=4.0
     - r-optparse
     - r-arrow
-    # BioConductor packages (ontologySimilarity, ontologyIndex) are auto-installed by the script via BiocManager
+    # ontologySimilarity and ontologyIndex are CRAN packages, auto-installed by the script

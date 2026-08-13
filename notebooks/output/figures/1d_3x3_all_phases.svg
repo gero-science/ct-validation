@@ -50,7 +50,7 @@ z
      </g>
     </g>
     <g id="text_3">
-     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="262.052557" y="162.869687" transform="rotate(-0 262.052557 162.869687)">Risk Ratio</text>
+     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="262.052557" y="162.869687" transform="rotate(-0 262.052557 162.869687)">Relative Success</text>
     </g>
    </g>
    <g id="matplotlib.axis_2">
@@ -93,19 +93,19 @@ z
     <g id="ytick_7">
      <g id="line2d_9"/>
      <g id="text_10">
-      <text style="font-size: 10px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="187.534375" y="64.734904" transform="rotate(-0 187.534375 64.734904)">Open Targets GE × Citeline</text>
+      <text style="font-size: 10px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="187.534375" y="64.734904" transform="rotate(-0 187.534375 64.734904)">Open Targets GE × Citeline CT</text>
      </g>
     </g>
     <g id="ytick_8">
      <g id="line2d_10"/>
      <g id="text_11">
-      <text style="font-size: 10px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="187.534375" y="54.011499" transform="rotate(-0 187.534375 54.011499)">Combined GE × Citeline</text>
+      <text style="font-size: 10px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="187.534375" y="54.011499" transform="rotate(-0 187.534375 54.011499)">Combined GE × Citeline CT</text>
      </g>
     </g>
     <g id="ytick_9">
      <g id="line2d_11"/>
      <g id="text_12">
-      <text style="font-size: 10px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="187.534375" y="43.288095" transform="rotate(-0 187.534375 43.288095)">Minikel et al. GE × Citeline</text>
+      <text style="font-size: 10px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="187.534375" y="43.288095" transform="rotate(-0 187.534375 43.288095)">Minikel et al. GE × Citeline CT</text>
      </g>
     </g>
    </g>
@@ -233,7 +233,7 @@ z
      </g>
     </g>
     <g id="text_25">
-     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="510.616193" y="162.869687" transform="rotate(-0 510.616193 162.869687)">Risk Ratio</text>
+     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="510.616193" y="162.869687" transform="rotate(-0 510.616193 162.869687)">Relative Success</text>
     </g>
    </g>
    <g id="matplotlib.axis_4">
@@ -382,7 +382,7 @@ z
      </g>
     </g>
     <g id="text_39">
-     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="262.052557" y="339.269687" transform="rotate(-0 262.052557 339.269687)">Risk Ratio</text>
+     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="262.052557" y="339.269687" transform="rotate(-0 262.052557 339.269687)">Relative Success</text>
     </g>
    </g>
    <g id="matplotlib.axis_6">
@@ -425,19 +425,19 @@ z
     <g id="ytick_25">
      <g id="line2d_36"/>
      <g id="text_46">
-      <text style="font-size: 10px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="187.534375" y="241.134904" transform="rotate(-0 187.534375 241.134904)">Open Targets GE × Citeline</text>
+      <text style="font-size: 10px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="187.534375" y="241.134904" transform="rotate(-0 187.534375 241.134904)">Open Targets GE × Citeline CT</text>
      </g>
     </g>
     <g id="ytick_26">
      <g id="line2d_37"/>
      <g id="text_47">
-      <text style="font-size: 10px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="187.534375" y="230.411499" transform="rotate(-0 187.534375 230.411499)">Combined GE × Citeline</text>
+      <text style="font-size: 10px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="187.534375" y="230.411499" transform="rotate(-0 187.534375 230.411499)">Combined GE × Citeline CT</text>
      </g>
     </g>
     <g id="ytick_27">
      <g id="line2d_38"/>
      <g id="text_48">
-      <text style="font-size: 10px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="187.534375" y="219.688095" transform="rotate(-0 187.534375 219.688095)">Minikel et al. GE × Citeline</text>
+      <text style="font-size: 10px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: end" x="187.534375" y="219.688095" transform="rotate(-0 187.534375 219.688095)">Minikel et al. GE × Citeline CT</text>
      </g>
     </g>
    </g>
@@ -558,7 +558,7 @@ z
      </g>
     </g>
     <g id="text_62">
-     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="510.616193" y="339.269687" transform="rotate(-0 510.616193 339.269687)">Risk Ratio</text>
+     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="510.616193" y="339.269687" transform="rotate(-0 510.616193 339.269687)">Relative Success</text>
     </g>
    </g>
    <g id="matplotlib.axis_8">

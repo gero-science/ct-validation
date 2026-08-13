@@ -2,7 +2,6 @@
 
 An open framework for benchmarking gene-indication evidence against clinical trial outcomes.
 
-
 `ct-validation` tests whether a set of gene-indication pairs is enriched for clinical success. It computes risk ratios and odds ratios with confidence intervals across clinical phase transitions and supports semantic disease matching through ontology-based similarity.
 
 > **Paper:** Kostiuk K, Igumnov D, Fedichev P, Feizi A. _ct-validation: an open framework for benchmarking gene-indication evidence against clinical trial outcomes._ (2026)
@@ -31,6 +30,9 @@ instead — Jupyter and the plotting theme on top of an editable install of this
 pip install -r notebooks/requirements.txt
 ```
 
+The full run takes about 10 minutes and peaks at 8.5 GB resident memory, so 16 GB of RAM is
+recommended.
+
 ## Quick start
 
 ### Python API
@@ -39,8 +41,8 @@ pip install -r notebooks/requirements.txt
 import ct_validation as ctv
 
 results = ctv.validate(
-    clinical_trials="data/clinical_trials/gene_indication_max_phase.parquet",
-    targets="data/genetic_evidence/genetic_evidence.parquet",
+    clinical_trials="data/clinical_trials/aggregated/gene_indication_max_phase.parquet",
+    targets="data/genetic_evidence/aggregated/genetic_evidence.parquet",
     similarity_lookup="data/mappings/efo_similarity_lookup_0.5.parquet",
 )
 print(results)
@@ -68,7 +70,7 @@ Batch mode — compare multiple evidence sources at once:
 
 ```python
 results = ctv.validate(
-    clinical_trials="data/clinical_trials/gene_indication_max_phase.parquet",
+    clinical_trials="data/clinical_trials/aggregated/gene_indication_max_phase.parquet",
     targets=[
         "data/genetic_evidence/gwas_catalog.parquet",
         "data/genetic_evidence/clinvar.parquet",
@@ -83,7 +85,7 @@ Prioritized mode — test whether a novel source adds value over an established 
 
 ```python
 results = ctv.validate(
-    clinical_trials="data/clinical_trials/gene_indication_max_phase.parquet",
+    clinical_trials="data/clinical_trials/aggregated/gene_indication_max_phase.parquet",
     targets="data/genetic_evidence/novel_score.parquet",
     baseline_evidence="data/genetic_evidence/established_genetics.parquet",
     similarity_lookup="data/mappings/efo_similarity_lookup_0.5.parquet",
@@ -138,13 +140,13 @@ Exposes two tools for agent-based workflows:
 
 ## Input schemas
 
-| Input               | Columns                              | Description                                        |
-| ------------------- | ------------------------------------ | -------------------------------------------------- |
+| Input               | Columns                                                | Description                                                                                 |
+| ------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
 | `clinical_trials`   | `gene`, `efo_id`, `max_phase`, `is_ongoing` (optional) | Target-indication pairs with highest phase reached, and whether that phase is still running |
-| `targets`           | `gene`, `efo_id`                     | Gene-indication pairs with supporting evidence     |
-| `similarity_lookup` | `efo_id_1`, `efo_id_2`, `similarity` | Pairwise EFO similarity, **symmetric with diagonal** (optional) |
-| `baseline_evidence` | `gene`, `efo_id`                     | Baseline evidence for prioritized mode (optional)  |
-| `gene_universe`     | one gene per line (text file)         | Restrict analysis to these genes (optional)        |
+| `targets`           | `gene`, `efo_id`                                       | Gene-indication pairs with supporting evidence                                              |
+| `similarity_lookup` | `efo_id_1`, `efo_id_2`, `similarity`                   | Pairwise EFO similarity, **symmetric with diagonal** (optional)                             |
+| `baseline_evidence` | `gene`, `efo_id`                                       | Baseline evidence for prioritized mode (optional)                                           |
+| `gene_universe`     | one gene per line (text file)                          | Restrict analysis to these genes (optional)                                                 |
 
 All inputs accept Parquet files or pandas DataFrames (except `gene_universe`, which is a text file or a Python set).
 
@@ -152,15 +154,15 @@ All inputs accept Parquet files or pandas DataFrames (except `gene_universe`, wh
 
 ## Output schema
 
-| Column                             | Description                                  |
-| ---------------------------------- | -------------------------------------------- |
-| `phase_from`, `phase_to`           | Phase transition (e.g. 1→2, 1→4)             |
+| Column                             | Description                                                 |
+| ---------------------------------- | ----------------------------------------------------------- |
+| `phase_from`, `phase_to`           | Phase transition (e.g. 1→2, 1→4)                            |
 | `n_yes`, `n_no`                    | Pairs entering phase, less censored (with/without evidence) |
-| `x_yes`, `x_no`                    | Pairs reaching target phase                  |
-| `rate_yes`, `rate_no`              | Progression rates                            |
-| `rr`, `rr_ci_lower`, `rr_ci_upper` | Risk ratio with 95% CI (Katz log method)     |
-| `or`, `or_ci_lower`, `or_ci_upper` | Odds ratio with 95% CI (Woolf logit method)  |
-| `p_value`                          | Two-sided Fisher's exact test p-value        |
+| `x_yes`, `x_no`                    | Pairs reaching target phase                                 |
+| `rate_yes`, `rate_no`              | Progression rates                                           |
+| `rr`, `rr_ci_lower`, `rr_ci_upper` | Risk ratio with 95% CI (Katz log method)                    |
+| `or`, `or_ci_lower`, `or_ci_upper` | Odds ratio with 95% CI (Woolf logit method)                 |
+| `p_value`                          | Two-sided Fisher's exact test p-value                       |
 
 When either comparison group is empty (`n_yes=0` or `n_no=0`), `rr`, `or`, their confidence intervals, and `p_value` are undefined (`NaN`).
 
@@ -240,7 +242,7 @@ The `scripts/` directory contains reproducible parsers for public databases:
 - ClinVar — pathogenic/likely pathogenic variants
 - Open Targets — germline genetic evidence streams (score ≥ 0.5); somatic sources
   (`eva_somatic`, `intogen`) are opt-in via `--include-somatic`
-- Genebass — exome-wide associations (p ≤ 1e-7)
+- Genebass — exome-wide associations (p < 1e-7)
 
 **Clinical trials** (`scripts/parse/clinical_trials/`):
 
@@ -278,9 +280,9 @@ Output options in `configs/default.yaml`:
 
 ```yaml
 output:
-  dir: "results/"
-  save_trials: false
-  save_matched_pairs: false
+    dir: "results/"
+    save_trials: false
+    save_matched_pairs: false
 ```
 
 ## Development
@@ -295,12 +297,12 @@ uv run pytest tests/ -v
 
 ## Availability
 
-| Resource                 | Location                                                                        |
-| ------------------------ | ------------------------------------------------------------------------------- |
-| Source code              | https://github.com/gero-science/ct-validation                                    |
-| Archived code (all versions) | [10.5281/zenodo.21840865](https://doi.org/10.5281/zenodo.21840865)           |
-| Benchmark data (all versions) | [10.5281/zenodo.21839216](https://doi.org/10.5281/zenodo.21839216)          |
-| Package                  | [PyPI](https://pypi.org/project/ct-validation/)                                  |
+| Resource                      | Location                                                           |
+| ----------------------------- | ------------------------------------------------------------------ |
+| Source code                   | https://github.com/gero-science/ct-validation                      |
+| Archived code (all versions)  | [10.5281/zenodo.21840865](https://doi.org/10.5281/zenodo.21840865) |
+| Benchmark data (all versions) | [10.5281/zenodo.21839216](https://doi.org/10.5281/zenodo.21839216) |
+| Package                       | [PyPI](https://pypi.org/project/ct-validation/)                    |
 
 The data deposit carries every input `notebooks/benchmark.py` reads. Extract it at the repository
 root and the notebook runs without fetching anything:

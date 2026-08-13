@@ -50,7 +50,7 @@ z
      </g>
     </g>
     <g id="text_3">
-     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="228.45625" y="156.091875" transform="rotate(-0 228.45625 156.091875)">Risk Ratio</text>
+     <text style="font-size: 12px; font-family: 'Inter', 'Helvetica', 'Arial', 'DejaVu Sans', sans-serif; text-anchor: middle" x="228.45625" y="156.091875" transform="rotate(-0 228.45625 156.091875)">Relative Success</text>
     </g>
    </g>
    <g id="matplotlib.axis_2">

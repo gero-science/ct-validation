@@ -1,6 +1,6 @@
-leg,source,edges,genes,drugs,drugs_with_moa
+leg,source,edges,genes,drugs,drugs_with_action_type
 gene-drug,DGIdb,68635,4857,18001,11114
 gene-drug,STITCH,34829,2994,9509,9509
 gene-drug,ChEMBL,10110,1372,3074,0
-gene-drug,OpenTargets,9233,1516,3702,3702
+gene-drug,Open Targets,9233,1516,3702,3702
 gene-drug,TrialPanorama,3857,767,1157,873

@@ -73,8 +73,8 @@ step_3() {
     # Ontology-propagated table; feeds only the propagated arm in notebooks/benchmark.py §9.
     $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
         ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/association_by_datasource_indirect/ || true
-    # association_overall_direct is not parsed; notebooks/benchmark.py §6a plots it as the
-    # all-evidence reference series alongside the per-datasource ones (Fig. S4).
+    # association_overall_direct is not parsed; notebooks/benchmark.py §6a tabulates it as the
+    # all-evidence reference row in ot_subsource_comparison.csv
     $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
         ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/association_overall_direct/ || true
     $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
