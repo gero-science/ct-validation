@@ -4,9 +4,7 @@ An open framework for benchmarking target–indication evidence against clinical
 
 [![PyPI](https://img.shields.io/pypi/v/ct-validation)](https://pypi.org/project/ct-validation/)
 [![Python](https://img.shields.io/pypi/pyversions/ct-validation)](https://pypi.org/project/ct-validation/)
-[![CI](https://github.com/gero-science/ct-validation/actions/workflows/ci.yml/badge.svg)](https://github.com/gero-science/ct-validation/actions/workflows/ci.yml)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21840865.svg)](https://doi.org/10.5281/zenodo.21840865)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.21840865-blue)](https://doi.org/10.5281/zenodo.21840865)
 
 `ct-validation` tests whether target–indication pairs supported by a given evidence source are
 enriched for clinical progression. The evidence may be genetic, omics-derived, computational or
