@@ -1,17 +1,18 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata below."
 type: software
-title: "ct-validation: an open framework for benchmarking gene-indication evidence against clinical trial outcomes"
+title: "ct-validation: an open framework for benchmarking target-indication evidence against clinical trial outcomes"
 version: 0.4.2
 date-released: 2026-08-13
 doi: 10.5281/zenodo.21922222
 license: MIT
 repository-code: "https://github.com/gero-science/ct-validation"
 abstract: >-
-  ct-validation tests whether a set of gene-indication pairs is enriched for clinical
-  success. It computes risk ratios and odds ratios with confidence intervals across
-  clinical phase transitions, supports ontology-based semantic disease matching, and
-  censors pairs whose outcome is not yet determined.
+  ct-validation tests whether target-indication pairs supported by a given evidence
+  source are enriched for clinical progression. It computes relative success (risk
+  ratios) and odds ratios with confidence intervals across clinical phase transitions,
+  supports ontology-based semantic disease matching, and censors pairs whose outcome is
+  not yet determined.
 authors:
   - given-names: Klim
     family-names: Kostiuk

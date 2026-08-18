@@ -1,7 +1,7 @@
 [project]
 name = "ct-validation"
 version = "0.4.2"
-description = "Benchmarking gene-indication evidence against clinical trial outcomes"
+description = "Benchmarking target-indication evidence against clinical trial outcomes"
 readme = "README.md"
 authors = [
     { name = "Klim Kostiuk", email = "2601074@gmail.com" },
