@@ -1284,12 +1284,17 @@ savefig(fig, "s6_similarity_thresholds")
 # %% [markdown]
 # ## 8. Oncology stratification
 #
-# Minikel et al. keep oncology; Tsepilov et al. exclude it. Two strata per arm: the full
-# table and the same table with oncology removed, not oncology against non-oncology.
-# Oncology is the `neoplasm` branch of EFO (EFO:0000616 and everything below it).
+# Minikel et al. keep oncology; Tsepilov et al. exclude it. Two strata per cell of the 3x3
+# design: the full table and the same table with oncology removed, not oncology against
+# non-oncology.
+#
+# Oncology follows Minikel et al.: an indication mapped from a MeSH descriptor in tree C04,
+# or whose identifier lies in the neoplasm branch of EFO (EFO:0000616).
 
 # %%
 EFO_OBO = DATA / "mappings" / "efo_v3.84.0.obo"
+MESH_TO_EFO = DATA / "mappings" / "mesh_to_efo.tsv"
+MESH_DESCRIPTORS = DATA / "mappings" / "d2023.bin"
 NEOPLASM = "EFO:0000616"
 
 
@@ -1299,7 +1304,7 @@ def _obo_curie(raw: str) -> str:
     return raw.split(":", 1)[1].replace("_", ":") if raw.startswith("efo:") else raw
 
 
-def load_efo_children(obo_path: Path) -> dict[str, list[str]]:
+def load_obo_children(obo_path: Path) -> dict[str, list[str]]:
     """Map each term to its direct subclasses, from the is_a lines of an OBO file."""
     children = {}
     term_id = None
@@ -1326,23 +1331,66 @@ def descendants(children: dict[str, list[str]], root: str) -> set[str]:
     return seen
 
 
-ONCOLOGY_TERMS = descendants(load_efo_children(EFO_OBO), NEOPLASM)
-print(f"Oncology: {len(ONCOLOGY_TERMS):,} EFO terms below {NEOPLASM}")
+def mesh_tree_descriptors(descriptor_path: Path, tree: str) -> set[str]:
+    """Descriptor UIs with a tree number under `tree`, from an ASCII MeSH descriptor file."""
+    # A record lists its tree numbers (`MN = C04.557.470`) before its identifier (`UI = D001943`).
+    descriptors, in_tree = set(), False
+    for line in descriptor_path.read_text(encoding="utf-8").splitlines():
+        if line == "*NEWRECORD":
+            in_tree = False
+        elif line.startswith("MN = ") and line[5:].split(".")[0] == tree:
+            in_tree = True
+        elif line.startswith("UI = ") and in_tree:
+            descriptors.add(line[5:].strip())
+    return descriptors
+
+
+EFO_NEOPLASM = descendants(load_obo_children(EFO_OBO), NEOPLASM)
+C04_DESCRIPTORS = mesh_tree_descriptors(MESH_DESCRIPTORS, "C04")
+crosswalk = pd.read_csv(MESH_TO_EFO, sep="\t")
+# Citeline's parquet keeps no MeSH column, so C04 provenance is read back through the crosswalk.
+mesh_ui = crosswalk["curie_id"].str.removeprefix("MeSH:")
+C04_TARGETS = set(crosswalk.loc[mesh_ui.isin(C04_DESCRIPTORS), "mapped_curie"])
+print(
+    f"EFO neoplasm branch: {len(EFO_NEOPLASM):,} terms; "
+    f"MeSH C04: {len(C04_DESCRIPTORS):,} descriptors, {len(C04_TARGETS):,} crosswalk targets",
+)
+
+combined_ct = pd.read_parquet(CLINICAL_TRIALS)
+# Citeline is MeSH-mapped throughout; the aggregate keeps the MeSH descriptor of its
+# TrialPanorama leg; Open Targets has no MeSH leg.
+ONCOLOGY_BY_CT = {
+    "Citeline CT": (minikel_ct, minikel_ct["efo_id"].isin(EFO_NEOPLASM | C04_TARGETS)),
+    "Open Targets CT": (ct_ot_only, ct_ot_only["efo_id"].isin(EFO_NEOPLASM)),
+    "Combined CT": (
+        combined_ct,
+        combined_ct["efo_id"].isin(EFO_NEOPLASM) | combined_ct["mesh_id"].isin(C04_DESCRIPTORS),
+    ),
+}
 
 oncology_results = []
-for arm, (ge, ct) in SWEEP_ARMS.items():
-    frame = pd.read_parquet(ct) if isinstance(ct, Path) else ct
+for ct_name, (frame, oncology) in ONCOLOGY_BY_CT.items():
+    print(f"{ct_name}: {oncology.mean():.1%} of pairs oncology")
     # Keys, not positions: the plot order below is built from these same labels.
-    strata = {
-        "with oncology": frame,
-        "without oncology": frame[~frame["efo_id"].isin(ONCOLOGY_TERMS)],
-    }
-    for stratum, subset in strata.items():
-        result = validate(clinical_trials=subset, targets=ge, **VALIDATE_KWARGS)
-        oncology_results.append(result.assign(experiment=arm, stratum=stratum, pairs=len(subset)))
+    strata = {"with oncology": frame, "without oncology": frame[~oncology]}
+    for ge_name, ge in GE_ARMS.items():
+        cell = f"{ge_name} × {ct_name}"
+        for stratum, subset in strata.items():
+            result = validate(clinical_trials=subset, targets=ge, **VALIDATE_KWARGS)
+            oncology_results.append(
+                result.assign(experiment=cell, stratum=stratum, pairs=len(subset)),
+            )
 
 oncology_strata = pd.concat(oncology_results, ignore_index=True)
 oncology_strata.to_csv(OUTPUT / "oncology_strata.csv", index=False)
+
+by_stratum = oncology_strata.pivot_table(
+    index=["experiment", "phase_label"],
+    columns="stratum",
+    values="rr",
+)
+lower = (by_stratum["without oncology"] < by_stratum["with oncology"]).sum()
+print(f"Without oncology is lower in {lower} of {len(by_stratum)} cell-transitions")
 
 # %%
 onc_plot = oncology_strata.assign(label=lambda d: d["phase_label"] + "  " + d["stratum"])
@@ -1353,32 +1401,32 @@ onc_order = [
     for stratum in oncology_strata["stratum"].unique()
 ]
 
-fig, axes = plt.subplots(1, 3, figsize=(12, 4.0), sharey=True)
-for ax, arm in zip(axes, SWEEP_ARMS):
-    panel = onc_plot[onc_plot["experiment"] == arm]
-    forest_plot(
-        panel,
-        "label",
-        title=arm,
-        ax=ax,
-        color_col="stratum",
-        sort_order=onc_order,
-    )
-    ax.set_title(arm, fontsize=11)
-    ax.set_xlabel("Relative Success")
-    for container in ax.containers:
-        if container.get_label() == "without oncology":
-            container.lines[0].set_marker("s")
-    ax.get_legend().remove()
-axes[0].sharex(axes[1])
+# Each trial table on its own x scale.
+fig, axes = plt.subplots(3, 3, figsize=(13, 10), sharex="row", sharey=True)
+for row, ct_name in zip(axes, ONCOLOGY_BY_CT):
+    for ax, ge_name in zip(row, GE_ARMS):
+        cell = f"{ge_name} × {ct_name}"
+        forest_plot(
+            onc_plot[onc_plot["experiment"] == cell],
+            "label",
+            ax=ax,
+            color_col="stratum",
+            sort_order=onc_order,
+        )
+        ax.set_title(cell, fontsize=10)
+        ax.set_xlabel("Relative Success")
+        for container in ax.containers:
+            if container.get_label() == "without oncology":
+                container.lines[0].set_marker("s")
+        ax.get_legend().remove()
 
 # One tick per transition, centred between its pair of strata.
-axes[0].set_yticks([i + 0.5 for i in range(0, 2 * len(PHASE_ORDER), 2)])
-axes[0].set_yticklabels(PHASE_ORDER)
-axes[0].invert_yaxis()
+axes[0, 0].set_yticks([i + 0.5 for i in range(0, 2 * len(PHASE_ORDER), 2)])
+axes[0, 0].set_yticklabels(PHASE_ORDER)
+axes[0, 0].invert_yaxis()
 fig.tight_layout()
 fig.legend(
-    *axes[0].get_legend_handles_labels(),
+    *axes[0, 0].get_legend_handles_labels(),
     loc="upper center",
     bbox_to_anchor=(0.5, 0.0),
     ncol=2,
@@ -1415,7 +1463,8 @@ savefig(fig, "s7_oncology_strata")
 # `censor=False`: their construction reads every record as concluded and drops no status.
 known_drug_ct = known_drug_pairs(censor=False)
 # No `is_ongoing` on this table, so validate() censors nothing, as the prior art does not.
-prior_art_ct = known_drug_ct[~known_drug_ct["efo_id"].isin(ONCOLOGY_TERMS)]
+# No MeSH leg, so only the ontology branch of §8 applies.
+prior_art_ct = known_drug_ct[~known_drug_ct["efo_id"].isin(EFO_NEOPLASM)]
 
 # Their Methods report the phase composition of the final table, which checks it directly.
 phase_check = pd.DataFrame({"theirs": pd.Series({1: 6163, 2: 14410, 3: 12240, 4: 4564})})
