@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it using the metadata below."
 type: software
 title: "ct-validation: an open framework for benchmarking target-indication evidence against clinical trial outcomes"
-version: 0.4.2
+version: 0.4.3
 date-released: 2026-08-13
 doi: 10.5281/zenodo.21922222
 license: MIT

@@ -1288,8 +1288,8 @@ savefig(fig, "s6_similarity_thresholds")
 # design: the full table and the same table with oncology removed, not oncology against
 # non-oncology.
 #
-# Oncology follows Minikel et al.: an indication mapped from a MeSH descriptor in tree C04,
-# or whose identifier lies in the neoplasm branch of EFO (EFO:0000616).
+# Oncology is MeSH tree C04 as in Minikel et al., plus the neoplasm branch of EFO
+# (EFO:0000616) for identifiers that never passed through MeSH.
 
 # %%
 EFO_OBO = DATA / "mappings" / "efo_v3.84.0.obo"
@@ -1331,14 +1331,14 @@ def descendants(children: dict[str, list[str]], root: str) -> set[str]:
     return seen
 
 
-def mesh_tree_descriptors(descriptor_path: Path, tree: str) -> set[str]:
-    """Descriptor UIs with a tree number under `tree`, from an ASCII MeSH descriptor file."""
+def mesh_tree_descriptors(descriptor_path: Path, category: str) -> set[str]:
+    """Descriptor UIs in a top-level MeSH tree category, from an ASCII descriptor file."""
     # A record lists its tree numbers (`MN = C04.557.470`) before its identifier (`UI = D001943`).
     descriptors, in_tree = set(), False
     for line in descriptor_path.read_text(encoding="utf-8").splitlines():
         if line == "*NEWRECORD":
             in_tree = False
-        elif line.startswith("MN = ") and line[5:].split(".")[0] == tree:
+        elif line.startswith("MN = ") and line[5:].split(".")[0] == category:
             in_tree = True
         elif line.startswith("UI = ") and in_tree:
             descriptors.add(line[5:].strip())
@@ -1348,7 +1348,8 @@ def mesh_tree_descriptors(descriptor_path: Path, tree: str) -> set[str]:
 EFO_NEOPLASM = descendants(load_obo_children(EFO_OBO), NEOPLASM)
 C04_DESCRIPTORS = mesh_tree_descriptors(MESH_DESCRIPTORS, "C04")
 crosswalk = pd.read_csv(MESH_TO_EFO, sep="\t")
-# Citeline's parquet keeps no MeSH column, so C04 provenance is read back through the crosswalk.
+# Citeline's parquet keeps no MeSH column, so C04 provenance is read back (as a superset) through
+# the crosswalk.
 mesh_ui = crosswalk["curie_id"].str.removeprefix("MeSH:")
 C04_TARGETS = set(crosswalk.loc[mesh_ui.isin(C04_DESCRIPTORS), "mapped_curie"])
 print(
@@ -1384,7 +1385,7 @@ for ct_name, (frame, oncology) in ONCOLOGY_BY_CT.items():
 oncology_strata = pd.concat(oncology_results, ignore_index=True)
 oncology_strata.to_csv(OUTPUT / "oncology_strata.csv", index=False)
 
-by_stratum = oncology_strata.pivot_table(
+by_stratum = oncology_strata.pivot(
     index=["experiment", "phase_label"],
     columns="stratum",
     values="rr",

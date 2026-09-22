@@ -1,6 +1,6 @@
 [project]
 name = "ct-validation"
-version = "0.4.2"
+version = "0.4.3"
 description = "Benchmarking target-indication evidence against clinical trial outcomes"
 readme = "README.md"
 authors = [
