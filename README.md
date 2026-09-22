@@ -368,8 +368,8 @@ uv run pytest tests/ -v
 > Kostiuk K, Igumnov D, Fedichev P, Feizi A. _ct-validation: an open framework for benchmarking
 > target–indication evidence against clinical trial outcomes._ (2026)
 
-Archived release [10.5281/zenodo.21922222](https://doi.org/10.5281/zenodo.21922222) · benchmark
-data [10.5281/zenodo.21839217](https://doi.org/10.5281/zenodo.21839217) · machine-readable
+Archived release [10.5281/zenodo.22901497](https://doi.org/10.5281/zenodo.22901497) · benchmark
+data [10.5281/zenodo.22901451](https://doi.org/10.5281/zenodo.22901451) · machine-readable
 metadata in [CITATION.cff](CITATION.cff).
 
 ## License

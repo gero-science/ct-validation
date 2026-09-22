@@ -3,8 +3,8 @@ message: "If you use this software, please cite it using the metadata below."
 type: software
 title: "ct-validation: an open framework for benchmarking target-indication evidence against clinical trial outcomes"
 version: 0.4.3
-date-released: 2026-08-13
-doi: 10.5281/zenodo.21922222
+date-released: 2026-09-22
+doi: 10.5281/zenodo.22901497
 license: MIT
 repository-code: "https://github.com/gero-science/ct-validation"
 abstract: >-
@@ -36,7 +36,7 @@ keywords:
 references:
   - type: data
     title: "ct-validation benchmark data: parsed genetic evidence and clinical trial datasets"
-    doi: 10.5281/zenodo.21839217
+    doi: 10.5281/zenodo.22901451
     year: 2026
     authors:
       - given-names: Klim
