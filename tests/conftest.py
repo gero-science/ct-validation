@@ -68,6 +68,20 @@ def minikel():
 
 
 @pytest.fixture
+def efo_release():
+    """An EFO release where two obsolete ids share one successor and a third has none."""
+    from ct_validation.efo import EfoOntology
+
+    return EfoOntology(
+        version="test",
+        live=frozenset({"EFO:001"}),
+        labels={"EFO:001": "successor"},
+        replacements={"EFO:OLD1": "EFO:001", "EFO:OLD2": "EFO:001"},
+        unresolved=frozenset({"EFO:GONE"}),
+    )
+
+
+@pytest.fixture
 def clinical_trials_df() -> pd.DataFrame:
     """10 clinical trials across phases 1-4."""
     return pd.DataFrame(
@@ -126,9 +140,13 @@ def similarity_lookup_df() -> pd.DataFrame:
     """EFO similarity pairs (0.5-1.0)."""
     return pd.DataFrame(
         {
-            "efo_id_1": ["EFO:001", "EFO:010", "EFO:020", "EFO:030", "EFO:001", "EFO:002"],
-            "efo_id_2": ["EFO:001", "EFO:002", "EFO:004", "EFO:003", "EFO:005", "EFO:002"],
-            "similarity": [1.0, 0.85, 0.75, 0.6, 0.55, 1.0],
+            "efo_id_1": [
+                "EFO:001", "EFO:010", "EFO:020", "EFO:030", "EFO:001", "EFO:002", "EFO:006",
+            ],
+            "efo_id_2": [
+                "EFO:001", "EFO:002", "EFO:004", "EFO:003", "EFO:005", "EFO:002", "EFO:006",
+            ],
+            "similarity": [1.0, 0.85, 0.75, 0.6, 0.55, 1.0, 1.0],
         }
     )
 

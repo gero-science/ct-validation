@@ -12,6 +12,7 @@ from ct_validation.config.schema import DEFAULT_PHASE_TRANSITIONS, Config, Thres
 from ct_validation.data.schema import CLINICAL_TRIALS, GENETIC_EVIDENCE, SIMILARITY_LOOKUP
 from ct_validation.validation.enrichment import calculate_all_enrichments
 from ct_validation.validation.matching import (
+    _setup_source,
     check_similarity_lookup,
     create_matched_pairs_df,
     create_matched_pairs_set,
@@ -30,6 +31,18 @@ class MissingOngoingWarning(UserWarning):
     and Tsepilov et al. 2026, and the only reading available when the source carries no
     trial status. Its own class so those callers can silence exactly this, rather than
     every UserWarning their program emits.
+    """
+
+
+class UnmatchableDiseaseWarning(UserWarning):
+    """Raised when inputs carry efo_ids that the similarity lookup does not contain.
+
+    Matching joins through the lookup, diagonal included, so such an id can never match: a
+    clinical-trial pair with one counts as unsupported in the denominator however strong its
+    evidence, and a target row with one supports nothing. The causes are a source coded
+    against a different EFO release than the lookup (see `efo_remap_obsolete` in
+    configs/parsing.yaml), and terms of ontologies EFO does not import, which reach the
+    sources through cross-references.
     """
 
 
@@ -173,6 +186,45 @@ def _load_clinical_trials(clinical_trials: pd.DataFrame | str | Path) -> pd.Data
     return ct.assign(
         is_ongoing=ct["is_ongoing"].astype("boolean").fillna(value=False).astype(bool),
     )
+
+
+def _warn_unmatchable(
+    con: duckdb.DuckDBPyConnection,
+    inputs: dict[str, _DataInput],
+    similarity_lookup: _DataInput,
+) -> None:
+    """Issue an UnmatchableDiseaseWarning per input with efo_ids absent from the lookup."""
+    _setup_source(con, "unmatchable_sim", similarity_lookup)
+    # sql — both columns, so a lookup that breaks the symmetry contract is not misreported
+    con.execute(
+        "CREATE OR REPLACE TEMP TABLE unmatchable_ids AS "
+        "SELECT efo_id_1 AS efo_id FROM unmatchable_sim UNION SELECT efo_id_2 FROM unmatchable_sim",
+    )
+    for i, (name, data) in enumerate(inputs.items()):
+        view = f"unmatchable_input_{i}"
+        _setup_source(con, view, data)
+        # sql
+        n, missing, examples = con.execute(
+            f"""
+            SELECT count(*),
+                   count(*) FILTER (WHERE s.efo_id IS NULL),
+                   list(DISTINCT d.efo_id ORDER BY d.efo_id) FILTER (WHERE s.efo_id IS NULL)[:3]
+            FROM {view} d
+            LEFT JOIN unmatchable_ids s ON d.efo_id = s.efo_id
+            WHERE d.efo_id IS NOT NULL
+            """,
+        ).fetchone()
+        if missing:
+            warnings.warn(
+                f"{name}: {missing:,} of {n:,} rows ({100 * missing / n:.1f}%) have an efo_id "
+                f"absent from similarity_lookup (e.g. {', '.join(examples)}), so they can never "
+                "match: terms of another EFO release, or of an ontology EFO does not import. "
+                "Silence this with "
+                "warnings.filterwarnings('ignore', category=UnmatchableDiseaseWarning).",
+                UnmatchableDiseaseWarning,
+                stacklevel=3,
+            )
+    con.execute("DROP TABLE unmatchable_ids")
 
 
 def _prepare_clinical_trials(
@@ -347,6 +399,16 @@ def validate(
 
     # Shared connection for batch efficiency
     con = duckdb.connect()
+
+    if p.similarity_lookup is not None:
+        inputs = {"clinical_trials": ct_all}
+        if p.baseline_evidence is not None:
+            inputs["baseline_evidence"] = p.baseline_evidence
+        if batch:
+            inputs |= {f"targets[{i}]": t for i, t in enumerate(p.targets_list)}
+        else:
+            inputs["targets"] = p.targets_list[0]
+        _warn_unmatchable(con, inputs, p.similarity_lookup)
 
     # Match baseline once (shared across all target sets)
     baseline_pairs: set[tuple[str, str]] = set()

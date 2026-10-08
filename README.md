@@ -341,6 +341,10 @@ cd notebooks && python benchmark.py
 The full run takes about 10 minutes and peaks at 8.5 GB resident memory, so 16 GB of RAM is
 recommended.
 
+To rebuild the parsed data from the sources instead, set `efo_remap_obsolete: false` in
+`configs/parsing.yaml`: the paper predates the remapping of obsolete EFO ids (see
+[DATA_SOURCES.md](DATA_SOURCES.md#efo-releases-and-obsolete-terms)).
+
 | Resource                      | Location                                                           |
 | ----------------------------- | ------------------------------------------------------------------ |
 | Source code                   | https://github.com/gero-science/ct-validation                      |
