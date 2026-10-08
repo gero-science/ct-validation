@@ -159,6 +159,22 @@ not on the configured EFO release; they are cached in `clinvar_ols_cache.csv`, w
 reuses. With remapping on, all three tiers accept only terms live in the configured release or
 with a live successor, and the cached hits are remapped like the rest.
 
+### Similarity lookup
+
+`scripts/r/create_efo_similarity_matrix.R` builds the EFO similarity lookup. Its R environment
+is pinned in `scripts/r/pixi.toml` (install [pixi](https://pixi.sh) first; on Apple Silicon,
+`ontologySimilarity` is compiled from CRAN on the first run). From the repository root:
+
+```bash
+pixi run --manifest-path scripts/r/pixi.toml similarity -- \
+    --efo-path data/mappings/efo_v3.90.0.obo \
+    --output data/mappings/efo_full_similarity_matrix_v3.90.0.parquet \
+    --lookup-output data/mappings/efo_similarity_lookup_v3.90.0_0.5.parquet
+```
+
+Without the output flags it overwrites the paper's 3.84 lookup. EFO 3.90 takes about 20 minutes
+and 5 GB of RAM on one core.
+
 ## Minikel et al. (2024) benchmark data
 
 The comparison uses genetic evidence and Citeline-derived trial data published by
