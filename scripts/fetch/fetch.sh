@@ -8,8 +8,8 @@
 #   ./fetch.sh 3-        # step 3 to end
 #   ./fetch.sh 3-5       # steps 3..5
 #   ./fetch.sh 3,5,7     # specific steps
-#   OT_RELEASE=26.09 ./fetch.sh 3,5   # another Open Targets release (default 25.12, the paper's)
-#   EFO_VERSION=3.90.0 ./fetch.sh 10  # another EFO release (default 3.84.0, the paper's)
+#   OT_RELEASE=25.12 ./fetch.sh 3,5   # another Open Targets release (default 26.09; 25.12 is the paper's)
+#   EFO_VERSION=3.84.0 ./fetch.sh 10  # another EFO release (default 3.93.0; 3.84.0 is the paper's)
 #   EFO_VERSION=ot ./fetch.sh 10      # the EFO release OT_RELEASE was built with
 
 set -eo pipefail
@@ -40,8 +40,8 @@ trap on_error ERR
 
 WGET="wget -q --show-progress --backups=0"
 BASE_DIR="${BASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-EFO_VERSION="${EFO_VERSION:-3.84.0}"
-OT_RELEASE="${OT_RELEASE:-25.12}"
+OT_RELEASE="${OT_RELEASE:-26.09}"
+EFO_VERSION="${EFO_VERSION:-3.93.0}"
 
 fetch() {
     local url="$1"

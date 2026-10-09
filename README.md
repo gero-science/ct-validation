@@ -362,9 +362,10 @@ estimates as methods and data sources are updated; the
 The full run takes about 10 minutes and peaks at 8.5 GB resident memory, so 16 GB of RAM is
 recommended.
 
-To rebuild the parsed data from the sources instead, set `efo_remap_obsolete: false` in
-`configs/parsing.yaml`: the paper predates the remapping of obsolete EFO ids (see
-[DATA_SOURCES.md](DATA_SOURCES.md#efo-releases-and-obsolete-terms)).
+To rebuild the parsed data from the sources instead, switch the configs back to the paper's
+sources: the defaults are Open Targets 26.09 and EFO 3.93 with obsolete ids remapped, and the
+paper used Open Targets 25.12 and EFO 3.84 without remapping (see
+[DATA_SOURCES.md](DATA_SOURCES.md#open-targets-and-efo-releases)).
 
 | Resource                      | Location                                                           |
 | ----------------------------- | ------------------------------------------------------------------ |
