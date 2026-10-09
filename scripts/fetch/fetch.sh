@@ -10,6 +10,7 @@
 #   ./fetch.sh 3,5,7     # specific steps
 #   OT_RELEASE=26.09 ./fetch.sh 3,5   # another Open Targets release (default 25.12, the paper's)
 #   EFO_VERSION=3.90.0 ./fetch.sh 10  # another EFO release (default 3.84.0, the paper's)
+#   EFO_VERSION=ot ./fetch.sh 10      # the EFO release OT_RELEASE was built with
 
 set -eo pipefail
 
@@ -50,21 +51,58 @@ fetch() {
     fi
 }
 
-# Enter the Open Targets release directory, `OT_RELEASE` (YY.MM or `latest`), and keep the
-# release's croissant.json there: its `version` records which release `latest` was.
+OT_FTP="https://ftp.ebi.ac.uk/pub/databases/opentargets/platform"
+OT_S3="https://open-targets-public-data-releases.s3.amazonaws.com"
+
+# Open Targets releases from 25.12 are read from its public S3 bucket, which serves the same
+# files several times faster than the FTP; earlier ones from the FTP. YY.MM compares as a string.
+ot_from_s3() {
+    [[ ! "$OT_RELEASE" < "25.12" ]]
+}
+
+ot_release_url() {
+    if ot_from_s3; then echo "${OT_S3}/platform/${OT_RELEASE}"; else echo "${OT_FTP}/${OT_RELEASE}"; fi
+}
+
+# The EFO release `OT_RELEASE` was built with, from the efo_otar_slim.json its pipeline copied
+# (manifest.json). The slim's own header is not reliable: EFO 3.93.0's declares 3.90.0.
+ot_efo_version() {
+    local version
+    version=$(curl -fsS "$(ot_release_url)/manifest.json" \
+        | grep -oE 'efo/releases/download/v[0-9]+\.[0-9]+\.[0-9]+/efo_otar_slim\.json' \
+        | sed -E 's|.*/v([^/]+)/.*|\1|' | sort -u)
+    [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+        || { echo "ERROR: no single EFO release in OT ${OT_RELEASE} manifest.json; set EFO_VERSION" >&2; return 1; }
+    echo "$version"
+}
+
+# Enter the Open Targets release directory, `OT_RELEASE` (YY.MM)
 enter_ot_release() {
+    [[ "$OT_RELEASE" =~ ^[0-9]{2}\.[0-9]{2}$ ]] \
+        || { echo "ERROR: OT_RELEASE must be YY.MM, not ${OT_RELEASE}" >&2; return 1; }
     local d="${BASE_DIR}/data/sources/opentargets/${OT_RELEASE}"
     mkdir -p "$d" && cd "$d"
-    rm -f croissant.json
-    fetch "https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/${OT_RELEASE}/croissant.json"
 }
 
 # Mirror one Open Targets Platform dataset into the current directory. Spark-written
 # datasets carry _SUCCESS; the ones written outside Spark from 26.03 are a single parquet.
 fetch_ot() {
     rm -rf "$1"
-    $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
-        "ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/${OT_RELEASE}/output/$1/" || true
+    if ot_from_s3; then
+        local listing key
+        listing=$(curl -fsS "${OT_S3}/?list-type=2&prefix=platform/${OT_RELEASE}/output/$1/") \
+            || { echo "ERROR: cannot list OT $1" >&2; return 1; }
+        # One listing holds up to 1,000 objects; no dataset comes close
+        [[ "$listing" != *"<IsTruncated>true</IsTruncated>"* ]] \
+            || { echo "ERROR: OT $1 has more objects than one listing" >&2; return 1; }
+        mkdir -p "$1"
+        for key in $(grep -oE '<Key>[^<]*</Key>' <<< "$listing" | sed 's/<[^>]*>//g'); do
+            (cd "$1" && fetch "${OT_S3}/${key}") || return 1
+        done
+    else
+        $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
+            "ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/${OT_RELEASE}/output/$1/" || true
+    fi
     [ -f "$1/_SUCCESS" ] || compgen -G "$1/*.parquet" > /dev/null \
         || { echo "ERROR: OT $1 incomplete" >&2; return 1; }
 }
@@ -111,7 +149,6 @@ step_5() {
     [[ "$OT_RELEASE" != "26.03" ]] \
         || { echo "ERROR: OT 26.03 clinical data are not supported; use 25.12 or 26.06+" >&2; return 1; }
     enter_ot_release
-    # YY.MM releases compare as strings, and `latest` sorts after all of them
     if [[ "$OT_RELEASE" < "26.03" ]]; then
         fetch_ot known_drug
     else
@@ -161,11 +198,13 @@ step_9() {
 }
 
 step_10() {
+    local version="$EFO_VERSION"
+    [[ "$version" != "ot" ]] || version=$(ot_efo_version)
     local d="${BASE_DIR}/data/mappings"
     mkdir -p "$d" && cd "$d"
-    rm -f efo.obo "efo_v${EFO_VERSION}.obo"
-    fetch "https://github.com/EBISPOT/efo/releases/download/v${EFO_VERSION}/efo.obo"
-    mv efo.obo "efo_v${EFO_VERSION}.obo"
+    rm -f efo.obo "efo_v${version}.obo"
+    fetch "https://github.com/EBISPOT/efo/releases/download/v${version}/efo.obo"
+    mv efo.obo "efo_v${version}.obo"
 }
 
 parse_steps() {

@@ -36,7 +36,9 @@ Deliberately excluded:
 ## Other Open Targets releases
 
 `fetch.sh` downloads Open Targets 25.12, the release the paper used. To download another one,
-set `OT_RELEASE` to its version, or to `latest`:
+set `OT_RELEASE` to its version (YY.MM). Releases from 25.12 come from Open Targets' public S3
+bucket, which serves the same files several times faster than the FTP; earlier ones from the
+FTP. The bucket keeps recent releases only:
 
 ```bash
 OT_RELEASE=26.09 ./scripts/fetch/fetch.sh 3,5
@@ -44,12 +46,19 @@ OT_RELEASE=26.09 ./scripts/fetch/fetch.sh 3,5
 
 This writes to `data/sources/opentargets/26.09/`; point the Open Targets paths in
 `configs/parsing.yaml` there. From 26.06 the clinical trials entry takes four datasets instead
-of `known_drug`, listed in the config commented out. Each release directory also keeps
-`croissant.json`, Open Targets' own metadata, whose `version` field says which release `latest`
-was.
+of `known_drug`, listed in the config commented out.
 
 A release's disease ids follow its own EFO, while the similarity lookup in this data release is
-built from EFO 3.84, so ids EFO has replaced since then find no match. Every other source is
+built from EFO 3.84, so ids EFO has replaced since then find no match. To match against the EFO
+the release was built with, download it, point `mappings.efo_ontology` at it and build its
+lookup (see [Similarity lookup](#similarity-lookup)). `EFO_VERSION=ot` reads the version from the
+release's `manifest.json`, which records it from 25.12; for earlier releases set it explicitly:
+
+```bash
+OT_RELEASE=26.09 EFO_VERSION=ot ./scripts/fetch/fetch.sh 10
+```
+
+Every other source is
 pinned to the version listed below. `notebooks/benchmark.py` reads the data release directly,
 so it reproduces the paper without fetching anything.
 
