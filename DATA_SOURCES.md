@@ -33,6 +33,26 @@ Deliberately excluded:
   these themselves; take them from [their repository](https://github.com/ericminikel/genetic_support/).
 - **Everything else under `data/sources/`.** Versioned upstream releases; `fetch.sh` retrieves them.
 
+## Other Open Targets releases
+
+`fetch.sh` downloads Open Targets 25.12, the release the paper used. To download another one,
+set `OT_RELEASE` to its version, or to `latest`:
+
+```bash
+OT_RELEASE=26.09 ./scripts/fetch/fetch.sh 3,5
+```
+
+This writes to `data/sources/opentargets/26.09/`; point the Open Targets paths in
+`configs/parsing.yaml` there. From 26.06 the clinical trials entry takes four datasets instead
+of `known_drug`, listed in the config commented out. Each release directory also keeps
+`croissant.json`, Open Targets' own metadata, whose `version` field says which release `latest`
+was.
+
+A release's disease ids follow its own EFO, while the similarity lookup in this data release is
+built from EFO 3.84, so ids EFO has replaced since then find no match. Every other source is
+pinned to the version listed below. `notebooks/benchmark.py` reads the data release directly,
+so it reproduces the paper without fetching anything.
+
 ## Genetic evidence
 
 | Source                                      | Version                           | Files                                                                         | Download                                                               | Acquisition                                                                                                                                                                             | Licence                                                                                                                          |
@@ -49,6 +69,10 @@ statement should not describe any of these three as CC0.
 
 `association_overall_direct/` is not parsed; it supplies the all-evidence reference row in
 `ot_subsource_comparison.csv`.
+
+From 26.03 the association tables name the datasource in `aggregationValue` (under
+`aggregationType` `datasourceId`) and the score in `associationScore`; `opentargets.py` reads
+either schema to the same output.
 
 Somatic datasources (`eva_somatic`, `intogen`) are excluded by default, matching Minikel et al.'s
 germline restriction, and restored by `opentargets.py --include-somatic` for the scope
@@ -74,6 +98,20 @@ better disease match.
 | DGIdb                 | 2024-Dec     | `interactions.tsv`, `drugs.tsv`                                                                 | https://dgidb.org/downloads                                               | `fetch.sh`                         |
 | TrialPanorama         | 2025-08-22   | Full dataset                                                                                    | https://huggingface.co/datasets/TrialPanorama/TrialPanorama-database      | `fetch.sh` (via `hf download`)     |
 
+_Open Targets from 26.06._ `known_drug` was dropped from the Platform at 26.03. From 26.06
+`opentargets.py` writes the same two outputs from `clinical_report/`,
+`drug_mechanism_of_action/`, `drug_molecule/` and `target/`, each its own entry in
+`configs/parsing.yaml` in place of `opentargets_known_drug`. It applies the quality controls
+Open Targets uses to aggregate reports into its own `clinical_indication`: reports flagged
+`INDIRECT_PRIMARY_PURPOSE` or `PHASE_IV_NOT_APPROVED` are dropped, and `UNVALIDATED_INDICATION`
+is only a warning. Its drug–disease pairs reproduce `clinical_indication` exactly at 26.06
+(86,468) and 26.09 (86,451).
+
+26.03 is not supported, and `fetch.sh` refuses it at step 5: Open Targets then dropped
+`UNVALIDATED_INDICATION` reports from `clinical_indication`, a rule it reversed at 26.06, and its
+`drug_molecule` stores synonyms and trade names as plain strings. Its association tables are
+read.
+
 ### Phase, status and licensing per source
 
 The internal phase scale is 0 = Preclinical … 4 = Approved.
@@ -81,6 +119,7 @@ The internal phase scale is 0 = Preclinical … 4 = Approved.
 | Source                    | Contributes | Phase handling                                                   | Study-type filter                        | Status                              | Licence                          |
 | ------------------------- | ----------- | ---------------------------------------------------------------- | ---------------------------------------- | ----------------------------------- | -------------------------------- |
 | Open Targets `known_drug` | both legs   | Numeric; phases 1–4 kept, the 6,562 records at phase 0.5 dropped | None available at 25.12                  | `status`                            | CC0 1.0                          |
+| Open Targets from 26.06   | both legs   | `clinicalStage`, standardised upward                             | Interventional only                      | `trialOverallStatus`                | CC0 1.0                          |
 | TrialPanorama             | both legs   | String, standardised upward (see below)                          | Interventional only; own conditions only | `recruitment_status`                | Apache 2.0                       |
 | ChEMBL                    | gene–drug   | pChEMBL ≥ 7.0; indications excluded from the aggregate           | n/a                                      | None recorded — hence the exclusion | CC BY-SA 3.0                     |
 | STITCH                    | gene–drug   | n/a                                                              | n/a                                      | n/a                                 | CC BY 4.0 (see below)            |
@@ -115,7 +154,8 @@ count as concluded. [CT.gov](https://clinicaltrials.gov/) applies `Unknown` only
 completion date has passed, so these went dark rather than stalling. `aggregate.py --unknown-ongoing` produces the sensitivity arm
 that censors them instead.
 
-**Two asymmetries between the status-bearing sources are known and deliberately not fixed.**
+**Two asymmetries between the status-bearing sources are known and deliberately not fixed at
+25.12.** Both are gone from 26.06, whose reports carry the study type and keep early phase I.
 
 _Interventional filter._ TrialPanorama is restricted to interventional studies; `known_drug`
 carries no study-type field at 25.12, so its leg admits records TrialPanorama's filter would have

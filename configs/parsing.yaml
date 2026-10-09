@@ -16,6 +16,8 @@ run:
 genetic_evidence:
     gwas_catalog: "data/sources/gwas_catalog/gwas-catalog-associations.tsv.gz"
     clinvar_vcf: "data/sources/clinvar/clinvar.vcf.gz"
+    # Open Targets paths follow `OT_RELEASE` in fetch.sh (default 25.12, the paper's); for another
+    # release, replace `25.12` here and see the clinical trials entries below
     opentargets_association: "data/sources/opentargets/25.12/association_by_datasource_direct"
     # Ontology-propagated counterpart, parsed only via `opentargets.py --indirect`
     opentargets_association_indirect: "data/sources/opentargets/25.12/association_by_datasource_indirect"
@@ -37,8 +39,13 @@ clinical_trials:
     dgidb_drugs: "data/sources/dgidb/drugs.tsv.gz"
     # TrialPanorama
     trialpanorama_dir: "data/sources/trialpanorama/"
-    # Open Targets
+    # Open Targets up to 25.12
     opentargets_known_drug: "data/sources/opentargets/25.12/known_drug"
+    # From 26.06 (26.03 is not supported), these four replace opentargets_known_drug
+    # opentargets_clinical_report: "data/sources/opentargets/26.09/clinical_report"
+    # opentargets_drug_mechanism_of_action: "data/sources/opentargets/26.09/drug_mechanism_of_action"
+    # opentargets_drug_molecule: "data/sources/opentargets/26.09/drug_molecule"
+    # opentargets_target: "data/sources/opentargets/26.09/target"
     # Minikel et al. (2024) Citeline/Pharmaprojects benchmark arm
     minikel_pharmaprojects: "data/minikel/pp.tsv"
     minikel_indications: "data/minikel/indic.tsv"

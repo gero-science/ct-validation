@@ -8,6 +8,7 @@
 #   ./fetch.sh 3-        # step 3 to end
 #   ./fetch.sh 3-5       # steps 3..5
 #   ./fetch.sh 3,5,7     # specific steps
+#   OT_RELEASE=26.09 ./fetch.sh 3,5   # another Open Targets release (default 25.12, the paper's)
 #   EFO_VERSION=3.90.0 ./fetch.sh 10  # another EFO release (default 3.84.0, the paper's)
 
 set -eo pipefail
@@ -19,7 +20,7 @@ declare -A STEP_NAMES=(
     [2]="ClinVar"
     [3]="Open Targets (genetic evidence)"
     [4]="ChEMBL"
-    [5]="Open Targets (known drugs)"
+    [5]="Open Targets (drugs and indications)"
     [6]="STITCH actions"
     [7]="STITCH chemical sources + STRING protein aliases"
     [8]="DGIdb"
@@ -38,6 +39,7 @@ trap on_error ERR
 
 WGET="wget -q --show-progress --backups=0"
 BASE_DIR="${BASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+OT_RELEASE="${OT_RELEASE:-25.12}"
 EFO_VERSION="${EFO_VERSION:-3.84.0}"
 
 fetch() {
@@ -46,6 +48,25 @@ fetch() {
         echo "ERROR: failed to fetch ${url}" >&2
         return 1
     fi
+}
+
+# Enter the Open Targets release directory, `OT_RELEASE` (YY.MM or `latest`), and keep the
+# release's croissant.json there: its `version` records which release `latest` was.
+enter_ot_release() {
+    local d="${BASE_DIR}/data/sources/opentargets/${OT_RELEASE}"
+    mkdir -p "$d" && cd "$d"
+    rm -f croissant.json
+    fetch "https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/${OT_RELEASE}/croissant.json"
+}
+
+# Mirror one Open Targets Platform dataset into the current directory. Spark-written
+# datasets carry _SUCCESS; the ones written outside Spark from 26.03 are a single parquet.
+fetch_ot() {
+    rm -rf "$1"
+    $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
+        "ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/${OT_RELEASE}/output/$1/" || true
+    [ -f "$1/_SUCCESS" ] || compgen -G "$1/*.parquet" > /dev/null \
+        || { echo "ERROR: OT $1 incomplete" >&2; return 1; }
 }
 
 step_1() {
@@ -67,24 +88,14 @@ step_2() {
 }
 
 step_3() {
-    local d="${BASE_DIR}/data/sources/opentargets/25.12"
-    mkdir -p "$d" && cd "$d"
-    rm -rf association_by_datasource_direct association_by_datasource_indirect association_overall_direct target
-    $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
-        ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/association_by_datasource_direct/ || true
+    enter_ot_release
+    fetch_ot association_by_datasource_direct
     # Ontology-propagated table; feeds only the propagated arm in notebooks/benchmark.py §9.
-    $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
-        ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/association_by_datasource_indirect/ || true
+    fetch_ot association_by_datasource_indirect
     # association_overall_direct is not parsed; notebooks/benchmark.py §6a tabulates it as the
     # all-evidence reference row in ot_subsource_comparison.csv
-    $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
-        ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/association_overall_direct/ || true
-    $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
-        ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/target/ || true
-    [ -f association_by_datasource_direct/_SUCCESS ] || { echo "ERROR: OT association_by_datasource_direct missing _SUCCESS" >&2; return 1; }
-    [ -f association_by_datasource_indirect/_SUCCESS ] || { echo "ERROR: OT association_by_datasource_indirect missing _SUCCESS" >&2; return 1; }
-    [ -f association_overall_direct/_SUCCESS ] || { echo "ERROR: OT association_overall_direct missing _SUCCESS" >&2; return 1; }
-    [ -f target/_SUCCESS ] || { echo "ERROR: OT target missing _SUCCESS" >&2; return 1; }
+    fetch_ot association_overall_direct
+    fetch_ot target
 }
 
 step_4() {
@@ -95,12 +106,22 @@ step_4() {
 }
 
 step_5() {
-    local d="${BASE_DIR}/data/sources/opentargets/25.12"
-    mkdir -p "$d" && cd "$d"
-    rm -rf known_drug
-    $WGET --recursive --no-parent --no-host-directories --cut-dirs 6 --reject "index.html*" \
-        ftp://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/known_drug/ || true
-    [ -f known_drug/_SUCCESS ] || { echo "ERROR: OT known_drug missing _SUCCESS" >&2; return 1; }
+    # The parser reads clinical_report as Open Targets did from 26.06; 26.03 aggregated it
+    # under another rule (see DATA_SOURCES.md)
+    [[ "$OT_RELEASE" != "26.03" ]] \
+        || { echo "ERROR: OT 26.03 clinical data are not supported; use 25.12 or 26.06+" >&2; return 1; }
+    enter_ot_release
+    # YY.MM releases compare as strings, and `latest` sorts after all of them
+    if [[ "$OT_RELEASE" < "26.03" ]]; then
+        fetch_ot known_drug
+    else
+        # known_drug is gone from 26.03: indications come from clinical_report, targets from
+        # drug_mechanism_of_action (symbols from target), names from drug_molecule.
+        fetch_ot clinical_report
+        fetch_ot drug_mechanism_of_action
+        fetch_ot drug_molecule
+        [ -f target/_SUCCESS ] || fetch_ot target
+    fi
 }
 
 step_6() {
