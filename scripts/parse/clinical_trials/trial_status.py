@@ -44,6 +44,11 @@ TRIALPANORAMA_CONCLUDED = {
 }
 TRIALPANORAMA_DROPPED = {"WITHDRAWN"}
 
+# From 26.03 Open Targets carries ClinicalTrials.gov's own status enum, the vocabulary
+# TrialPanorama uses; reports from labels, agencies and curated resources carry none.
+OPENTARGETS_REPORT_CONCLUDED = {**TRIALPANORAMA_CONCLUDED, None: True}
+OPENTARGETS_REPORT_DROPPED = TRIALPANORAMA_DROPPED
+
 # ClinicalTrials.gov's Unknown label, in both source vocabularies. Read as concluded
 # above; aggregate.py's --unknown-ongoing is the sensitivity arm for that choice.
 UNKNOWN_STATUSES = {"Unknown status", "UNKNOWN"}
