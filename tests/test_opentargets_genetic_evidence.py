@@ -91,3 +91,18 @@ def test_pair_kept_when_somatic_evidence_included_clears_min_score(
     )
 
     assert ("TARGET3", "DISEASE3") in _pairs(result)
+
+
+def test_associations_from_26_03_schema_read_the_same(ge_opentargets, associations_path, tmp_path):
+    """From 26.03 the datasource and score columns are renamed; the result is unchanged."""
+    renamed = pd.read_parquet(associations_path).rename(
+        columns={"datasourceId": "aggregationValue", "score": "associationScore"},
+    )
+    renamed["aggregationType"] = "datasourceId"
+    path = tmp_path / "associations_26_03.parquet"
+    renamed.to_parquet(path, index=False)
+
+    expected = ge_opentargets.load_associations(associations_path, min_score=0.5)
+    result = ge_opentargets.load_associations(path, min_score=0.5)
+
+    pd.testing.assert_frame_equal(result, expected)

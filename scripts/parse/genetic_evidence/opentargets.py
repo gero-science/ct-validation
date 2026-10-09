@@ -17,6 +17,7 @@ import logging
 from pathlib import Path
 
 import pandas as pd
+import pyarrow.dataset
 import yaml
 
 log = logging.getLogger(__name__)
@@ -46,10 +47,17 @@ def load_associations(
 ) -> pd.DataFrame:
     """Load and filter OpenTargets associations to germline genetic datasources."""
     log.info(f"Loading associations from {association_dir}")
-    df = pd.read_parquet(
-        association_dir,
-        columns=["datasourceId", "targetId", "diseaseId", "score"],
-    )
+    # From 26.03 the datasource is an `aggregationValue` and the score `associationScore`.
+    if "aggregationValue" in pyarrow.dataset.dataset(association_dir).schema.names:
+        columns = {
+            "aggregationValue": "datasourceId",
+            "targetId": "targetId",
+            "diseaseId": "diseaseId",
+            "associationScore": "score",
+        }
+    else:
+        columns = {c: c for c in ["datasourceId", "targetId", "diseaseId", "score"]}
+    df = pd.read_parquet(association_dir, columns=list(columns)).rename(columns=columns)
     n_total = len(df)
 
     # Keep only genetic evidence datasources
