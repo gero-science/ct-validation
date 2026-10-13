@@ -6,7 +6,7 @@ An open framework for benchmarking target–indication evidence against clinical
 [![Python](https://img.shields.io/pypi/pyversions/ct-validation)](https://pypi.org/project/ct-validation/)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.21840865-blue)](https://doi.org/10.5281/zenodo.21840865)
 
-<img width="661" height="471" alt="Frame 1" src="https://github.com/user-attachments/assets/a5840446-3359-4467-b4be-aa610268e65a" />
+<img width="661" height="471" alt="Package schema" src="https://github.com/user-attachments/assets/a5840446-3359-4467-b4be-aa610268e65a" />
 
 `ct-validation` tests whether target–indication pairs supported by a given evidence source are
 enriched for clinical progression. The evidence may be genetic, omics-derived, computational or
@@ -93,8 +93,10 @@ expanded = ctv.get_expanded_disease_set(
 
 ```python
 results = ctv.validate(...)
-ctv.forest_plot(results, metric="rr", title="Phase I → Approved")
+ctv.forest_plot(results, metric="rr", title="I→Approved")
 ```
+
+<img width="381" height="163" alt="Visualization example" src="https://github.com/user-attachments/assets/da2b3dd0-5b26-4afc-9ec9-a77de87eef85" />
 
 ## Other interfaces
 
