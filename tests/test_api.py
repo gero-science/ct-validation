@@ -4,7 +4,7 @@ import warnings
 
 import pandas as pd
 import pytest
-from ct_validation import MissingOngoingWarning, validate
+from ct_validation import MissingOngoingWarning, UnmatchableDiseaseWarning, validate
 
 
 def test_validate_baseline_mode(clinical_trials_df, genetic_evidence_df, similarity_lookup_df):
@@ -626,3 +626,52 @@ def test_validate_does_not_warn_when_ongoing_column_is_present(
         validate(clinical_trials=ongoing_clinical_trials_df, targets=genetic_evidence_df)
 
     assert not [w for w in caught if "is_ongoing" in str(w.message)]
+
+
+def _unmatchable_warnings(**kwargs) -> list[str]:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        validate(**kwargs)
+    return [str(w.message) for w in caught if w.category is UnmatchableDiseaseWarning]
+
+
+def test_no_unmatchable_warning_when_lookup_covers_every_disease(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    """Every fixture disease is in the lookup, in either column."""
+    assert not _unmatchable_warnings(
+        clinical_trials=clinical_trials_df,
+        targets=genetic_evidence_df,
+        similarity_lookup=similarity_lookup_df,
+    )
+
+
+def test_unmatchable_diseases_are_announced_per_input(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    """An efo_id missing from the lookup can never match, so each input says how many it has."""
+    ct = clinical_trials_df.assign(efo_id=clinical_trials_df["efo_id"].replace("EFO:006", "EFO:OLD"))
+    ge = pd.concat([genetic_evidence_df, pd.DataFrame({"gene": ["GENE9"], "efo_id": ["EFO:OLD"]})])
+
+    messages = _unmatchable_warnings(
+        clinical_trials=ct,
+        targets=[genetic_evidence_df, ge],
+        similarity_lookup=similarity_lookup_df,
+    )
+
+    assert len(messages) == 2
+    assert messages[0].startswith("clinical_trials: 1 of 10 rows (10.0%)")
+    assert messages[1].startswith("targets[1]: 1 of 9 rows")
+    assert all("EFO:OLD" in m for m in messages)
+
+
+def test_exact_matching_does_not_check_the_lookup(clinical_trials_df, genetic_evidence_df):
+    """Without a lookup there is nothing to be absent from."""
+    assert not _unmatchable_warnings(
+        clinical_trials=clinical_trials_df.assign(efo_id=clinical_trials_df["efo_id"] + "-OLD"),
+        targets=genetic_evidence_df,
+    )

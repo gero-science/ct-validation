@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+from ct_validation.efo import EfoOntology, efo_for_remap, remap_efo_ids
 
 log = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ def parse_gwas_catalog(
     raw_path: Path,
     output_path: Path,
     max_pvalue: float = 5e-8,
+    efo: EfoOntology | None = None,
 ) -> pd.DataFrame:
     """Parse GWAS Catalog to gene-trait associations."""
     log.info("Loading GWAS Catalog...")
@@ -70,6 +72,8 @@ def parse_gwas_catalog(
 
     # Extract ontology ID
     pairs["efo_id"] = pairs["trait_uri"].apply(extract_ontology_id)
+    if efo is not None:
+        pairs = remap_efo_ids(pairs, efo)
 
     # Deduplicate (keep lowest p-value)
     pairs = pairs.sort_values("p_value").groupby(["gene", "efo_id"], as_index=False).first()
@@ -108,10 +112,11 @@ def main():
         with config_path.open() as f:
             cfg = yaml.safe_load(f)
         ge_inputs = cfg.get("genetic_evidence", {})
+        mappings = cfg.get("mappings", {})
         thresholds = cfg.get("thresholds", {})
         output_dir = Path(cfg.get("output_dir", "."))
     else:
-        ge_inputs, thresholds, output_dir = {}, {}, Path()
+        ge_inputs, mappings, thresholds, output_dir = {}, {}, {}, Path()
 
     parse_gwas_catalog(
         raw_path=args.input or Path(ge_inputs.get("gwas_catalog", "")),
@@ -119,6 +124,7 @@ def main():
         max_pvalue=args.max_pvalue
         if args.max_pvalue is not None
         else thresholds.get("gwas_max_pvalue", 5e-8),
+        efo=efo_for_remap(mappings),
     )
 
 
