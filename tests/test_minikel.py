@@ -311,3 +311,21 @@ def test_associations_match_the_targets_schema(minikel, write_associations):
     minikel.parse_associations(assoc, mapping, out)
 
     assert list(pd.read_parquet(out).columns) == ["gene", "efo_id", "source"]
+
+
+def test_obsolete_ids_collapse_onto_their_successor(minikel, write_inputs, efo_release):
+    """Two old ids replaced by one term become one pair, censored as one; dead ids drop."""
+    pp, mapping, out = write_inputs(
+        [
+            _programme("GENE1", "D001", ccatnum=4, acat="Phase III"),
+            _programme("GENE1", "D002", ccatnum=4),
+            _programme("GENE1", "D003", ccatnum=5),
+        ],
+        [("D001", "EFO:OLD1"), ("D002", "EFO:OLD2"), ("D003", "EFO:GONE")],
+    )
+
+    result = minikel.parse_clinical_trials(pp, mapping, out, efo=efo_release)
+
+    assert result["efo_id"].tolist() == ["EFO:001"]
+    assert result["max_phase"].tolist() == [3]
+    assert result["is_ongoing"].tolist() == [False]

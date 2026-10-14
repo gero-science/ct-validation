@@ -4,7 +4,7 @@ Main entry point:
 - validate(): Run validation pipeline (with config and/or explicit args)
 """
 
-from ct_validation.api import MissingOngoingWarning, validate
+from ct_validation.api import MissingOngoingWarning, UnmatchableDiseaseWarning, validate
 from ct_validation.config import load_config
 from ct_validation.config.schema import PHASE_NAMES, Config, phase_label
 from ct_validation.plotting import forest_plot
@@ -28,6 +28,7 @@ __all__ = [
     "Config",
     "EnrichmentResult",
     "MissingOngoingWarning",
+    "UnmatchableDiseaseWarning",
     "calculate_enrichment",
     "check_similarity_lookup",
     "create_matched_pairs_df",

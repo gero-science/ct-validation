@@ -5,29 +5,29 @@
 # Peak memory ≈ 2 × chunk_size × n_terms × 8 bytes (Lin + Resnik chunk pair).
 # Full matrix parquet is written incrementally (one row-group per chunk).
 #
-# Run from the repo root (ct-validation/):
-#   Rscript scripts/r/create_efo_similarity_matrix.R
-#   Rscript scripts/r/create_efo_similarity_matrix.R --efo-path data/mappings/efo_v3.84.0.obo
-#
-# Dependencies: ontologySimilarity, ontologyIndex, arrow
-# Install via: conda env create -f environment.yaml
+# Dependencies (ontologySimilarity, ontologyIndex, arrow, optparse) are pinned in pixi.toml and
+# pixi.lock, from conda-forge; conda-forge has no osx-arm64 build of ontologySimilarity, so
+# pixi's `install` task, which `similarity` runs first, compiles it from CRAN. From the repo root:
+#   pixi run --manifest-path scripts/r/pixi.toml similarity
+# The defaults build EFO 3.93's lookup, which configs/default.yaml reads. The paper's, from EFO
+# 3.84, is efo_similarity_lookup_0.5.parquet in the data release.
 
 library(optparse)
 
 option_list <- list(
   make_option("--efo-path",
     type = "character",
-    default = "data/mappings/efo_v3.84.0.obo",
+    default = "data/mappings/efo_v3.93.0.obo",
     help = "Path to EFO ontology OBO file"
   ),
   make_option("--output",
     type = "character",
-    default = "data/mappings/efo_full_similarity_matrix.parquet",
+    default = "data/mappings/efo_full_similarity_matrix_v3.93.0.parquet",
     help = "Output parquet path for full matrix (written incrementally)"
   ),
   make_option("--lookup-output",
     type = "character",
-    default = "data/mappings/efo_similarity_lookup_0.5.parquet",
+    default = "data/mappings/efo_similarity_lookup_v3.93.0_0.5.parquet",
     help = "Output parquet path for lookup table"
   ),
   make_option("--lookup-threshold",
@@ -50,13 +50,6 @@ exclude_prefixes <- if (nchar(opt$`exclude-prefixes`) > 0) {
   strsplit(opt$`exclude-prefixes`, ",")[[1]]
 } else {
   character(0)
-}
-
-if (!requireNamespace("BiocManager", quietly = TRUE)) {
-  install.packages("BiocManager", repos = "https://cloud.r-project.org")
-}
-if (!requireNamespace("ontologySimilarity", quietly = TRUE)) {
-  BiocManager::install("ontologySimilarity", update = FALSE, ask = FALSE)
 }
 
 suppressPackageStartupMessages({
@@ -90,7 +83,8 @@ ic <- descendants_IC(efo)
 
 all_terms_raw   <- efo$id
 has_name        <- all_terms_raw %in% names(efo$name)
-is_not_obsolete <- !(all_terms_raw %in% efo$obsolete)
+# `obsolete` is a logical vector named by term id, not a list of ids
+is_not_obsolete <- !efo$obsolete[all_terms_raw]
 has_colon       <- grepl(":", all_terms_raw, fixed = TRUE)
 
 valid_prefix <- sapply(all_terms_raw, function(term) {

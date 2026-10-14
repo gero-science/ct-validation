@@ -6,6 +6,12 @@ Implements King et al. 2019 methodology:
 - Pathogenic/Likely pathogenic variants only
 - Extracts structured ontology IDs from CLNDISDB (MONDO, Orphanet, MeSH, HP)
 - Maps to EFO via direct IDs, OxO mappings, and OLS text search fallback
+
+The OLS tier queries the live service, so what it returns depends on the date of the query,
+not on the EFO release configured here; its hits are cached in `clinvar_ols_cache.csv`, and
+a re-run reuses the cache. With `efo_remap_obsolete`, every tier only accepts terms that are
+live in the configured release or have a live successor, and the cached hits are remapped
+like the rest.
 """
 
 import argparse
@@ -17,6 +23,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 import yaml
+from ct_validation.efo import EfoOntology, load_efo, remap_efo_ids
 from cyvcf2 import VCF
 from tqdm import tqdm
 
@@ -393,10 +400,18 @@ def parse_clinvar(
     ols_cache_path: Path | None = None,
     max_efo_per_condition: int = 10,
     skip_ols: bool = False,
+    efo: EfoOntology | None = None,
 ) -> pd.DataFrame:
-    """Parse ClinVar VCF to gene-disease associations."""
+    """Parse ClinVar VCF to gene-disease associations.
+
+    Without `efo`, any id in the .obo at `efo_path` is accepted, obsolete ones included.
+    """
     # Load resources
-    efo_ids, efo_labels = load_efo_ontology(efo_path)
+    if efo is None:
+        efo_ids, efo_labels = load_efo_ontology(efo_path)
+    else:
+        # Obsolete ids with a live successor still count as hits; they are rewritten below
+        efo_ids, efo_labels = efo.live | efo.replacements.keys(), efo.labels
     mesh_mapping = load_mapping_file(mesh_mapping_path, efo_ids, strip_prefix="MeSH:")
     oxo_mapping = load_mapping_file(oxo_mapping_path, efo_ids)
 
@@ -422,6 +437,9 @@ def parse_clinvar(
         )
 
     final_mapping = pd.concat([clndisdb_mapping, oxo_result, ols_result], ignore_index=True)
+    if efo is not None:
+        final_mapping = remap_efo_ids(final_mapping, efo, label_column="efo_label")
+        final_mapping = final_mapping.drop_duplicates(subset=["condition", "efo_id"])
 
     # Filter broad conditions
     efo_counts = final_mapping.groupby("condition")["efo_id"].nunique()
@@ -492,9 +510,10 @@ def main():
     else:
         ge_inputs, mappings, thresholds, output_dir = {}, {}, {}, Path()
 
+    efo_path = args.efo_ontology or Path(mappings.get("efo_ontology", ""))
     parse_clinvar(
         vcf_path=args.vcf or Path(ge_inputs.get("clinvar_vcf", "")),
-        efo_path=args.efo_ontology or Path(mappings.get("efo_ontology", "")),
+        efo_path=efo_path,
         mesh_mapping_path=args.mesh_mapping or Path(mappings.get("mesh_to_efo", "")),
         oxo_mapping_path=args.oxo_mapping or Path(mappings.get("mondo_orphanet_hp_to_efo", "")),
         output_path=args.output or output_dir / "genetic_evidence" / "clinvar.parquet",
@@ -502,6 +521,7 @@ def main():
         max_efo_per_condition=args.max_efo_per_condition
         or thresholds.get("clinvar_max_efo_per_condition", 10),
         skip_ols=args.skip_ols,
+        efo=load_efo(efo_path) if mappings.get("efo_remap_obsolete") else None,
     )
 
 

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 import trial_status
+from ct_validation.efo import EfoOntology, efo_for_remap, remap_efo_ids
 import yaml
 
 log = logging.getLogger(__name__)
@@ -109,6 +110,7 @@ def create_drug_trial_mapping(
     valid_phases: list[str] | None = None,
     excluded_statuses: list[str] | None = None,
     phase_standardization: dict[str, str] | None = None,
+    efo: EfoOntology | None = None,
 ) -> pd.DataFrame:
     """Create drug-trial mapping with indications.
 
@@ -119,6 +121,7 @@ def create_drug_trial_mapping(
             is retained — it still shows the phase was reached, and trial_status
             resolves it as concluded.
         phase_standardization: Mapping to standardize phase names
+        efo: EFO release to remap obsolete ids of the MeSH-to-EFO mapping against
     """
     trial_types = trial_types or DEFAULT_TRIAL_TYPES
     valid_phases = valid_phases or DEFAULT_VALID_PHASES
@@ -178,6 +181,9 @@ def create_drug_trial_mapping(
         efo_map = efo_map[["mesh_id", "mapped_curie", "mapped_label"]].rename(
             columns={"mapped_curie": "efo_id", "mapped_label": "efo_label"},
         )
+        if efo is not None:
+            efo_map = remap_efo_ids(efo_map, efo, label_column="efo_label")
+            efo_map = efo_map.drop_duplicates(subset=["mesh_id", "efo_id"])
         result = result.merge(efo_map, left_on="condition_mesh_id", right_on="mesh_id", how="left")
         result = result.drop(columns=["mesh_id"])
         log.info(
@@ -222,6 +228,7 @@ def parse_trialpanorama(
     trial_types: list[str] | None = None,
     valid_phases: list[str] | None = None,
     excluded_statuses: list[str] | None = None,
+    efo: EfoOntology | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Parse TrialPanorama data."""
     drug_moa, drugs, studies, conditions = load_trialpanorama_data(input_dir)
@@ -235,6 +242,7 @@ def parse_trialpanorama(
         trial_types=trial_types,
         valid_phases=valid_phases,
         excluded_statuses=excluded_statuses,
+        efo=efo,
     )
 
     # Save
@@ -288,6 +296,7 @@ def main():
         trial_types=tp_filters.get("trial_types"),
         valid_phases=tp_filters.get("valid_phases"),
         excluded_statuses=tp_filters.get("excluded_statuses"),
+        efo=efo_for_remap(mappings),
     )
 
 

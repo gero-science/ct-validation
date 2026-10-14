@@ -1,11 +1,12 @@
 [project]
 name = "ct-validation"
-version = "0.4.3"
+version = "0.5.1"
 description = "Benchmarking target-indication evidence against clinical trial outcomes"
 readme = "README.md"
 authors = [
     { name = "Klim Kostiuk", email = "2601074@gmail.com" },
     { name = "Daniel Igumnov" },
+    { name = "Irene López Santiago" },
     { name = "Peter Fedichev" },
     { name = "Amir Feizi" },
 ]
