@@ -20,19 +20,20 @@ ctv.validate(
     clinical_trials="data/clinical_trials/aggregated/gene_indication_max_phase.parquet",
     targets="data/genetic_evidence/aggregated/genetic_evidence.parquet",
     similarity_lookup="data/mappings/efo_similarity_lookup_0.5.parquet",
+    gene_universe="data/mappings/protein_coding_genes.txt",
 )
 ```
 
 ```text
  phase_label  x_yes  n_yes    x_no     n_no    rr  rr_ci_lower  rr_ci_upper    p_value
-        I→II  17541  18544 1934679  2118134  1.04         1.03         1.04   6.5e-63
-      II→III  12979  16603 1184685  1785165  1.18         1.17         1.19  1.0e-242
-III→Approved   8576  12221  623052  1076226  1.21         1.20         1.23  4.7e-171
-  I→Approved   8576  16848  623052  1860161  1.52         1.50         1.54        0.0
+        I→II  17541  18544 1660990  1815079  1.03         1.03         1.04   2.9e-57
+      II→III  12979  16603 1029594  1531787  1.16         1.15         1.17  4.3e-211
+III→Approved   8576  12221  550860   934446  1.19         1.18         1.20  7.2e-144
+  I→Approved   8576  16848  550860  1590728  1.47         1.45         1.49        0.0
 ```
 
-The final row is the phase I to approval composite: supported pairs progressed **1.52 times as
-often** as unsupported ones (95% CI 1.50–1.54).
+The final row is the phase I to approval composite: supported pairs progressed **1.47 times as
+often** as unsupported ones (95% CI 1.45–1.49).
 `rr` is the *relative success* (RS) metric of [Nelson et al.
 (2015)](https://doi.org/10.1038/ng.3314) and [Minikel et al.
 (2024)](https://doi.org/10.1038/s41586-024-07316-0) — a risk ratio of phase advancement.
@@ -89,6 +90,9 @@ expanded = ctv.get_expanded_disease_set(
     similarity_threshold=0.8,
 )
 ```
+
+A clinical pair whose disease is absent from the lookup cannot be compared with any evidence, so
+it is left out of both groups; `validate()` reports how many with an `UnmatchableDiseaseWarning`.
 
 ### Visualization
 
@@ -335,13 +339,25 @@ instructions.
 <details>
 <summary><b>Reproducing the paper</b></summary>
 
-The data deposit carries every input `notebooks/benchmark.py` reads, so nothing has to be fetched:
+The paper's results were produced with release v0.4.3 (archived code
+[10.5281/zenodo.22901497](https://doi.org/10.5281/zenodo.22901497)) and benchmark data
+[10.5281/zenodo.22901451](https://doi.org/10.5281/zenodo.22901451). The data deposit carries every
+input `notebooks/benchmark.py` reads:
 
 ```bash
-tar xzf ct-validation-data.tar.gz          # at the repository root
-pip install -r notebooks/requirements.txt  # pinned env: Jupyter + plotting theme + editable install
-cd notebooks && python benchmark.py
+git clone https://github.com/gero-science/ct-validation
+cd ct-validation
+git checkout v0.4.3
+curl -LO https://zenodo.org/records/22901451/files/ct-validation-data.tar.gz
+tar xzf ct-validation-data.tar.gz
+cd notebooks
+pip install -r requirements.txt   # pinned env: Jupyter + plotting theme + editable install
+python benchmark.py
 ```
+
+The Zenodo code archive can stand in for the git checkout. Later releases may give different
+estimates as methods and data sources are updated; the
+[release notes](https://github.com/gero-science/ct-validation/releases) list the changes.
 
 The full run takes about 10 minutes and peaks at 8.5 GB resident memory, so 16 GB of RAM is
 recommended.
@@ -374,9 +390,10 @@ uv run pytest tests/ -v
 > target–indication evidence against clinical trial outcomes._ Bioinformatics (2026).
 > https://doi.org/10.1093/bioinformatics/btag788
 
-Archived release [10.5281/zenodo.22901497](https://doi.org/10.5281/zenodo.22901497) · benchmark
-data [10.5281/zenodo.22901451](https://doi.org/10.5281/zenodo.22901451) · machine-readable
-metadata in [CITATION.cff](CITATION.cff).
+Release used in the paper (v0.4.3)
+[10.5281/zenodo.22901497](https://doi.org/10.5281/zenodo.22901497) · its benchmark data
+[10.5281/zenodo.22901451](https://doi.org/10.5281/zenodo.22901451) · machine-readable metadata in
+[CITATION.cff](CITATION.cff).
 
 ## License
 

@@ -79,6 +79,8 @@ def ct_validate(
             File path to parquet, or list of {"gene": str, "efo_id": str}.
         similarity_lookup: EFO semantic similarity pairs (optional).
             File path to parquet, or list of {"efo_id_1": str, "efo_id_2": str, "similarity": float}.
+            clinical_trials pairs whose efo_id is absent from it cannot match any evidence
+            and are left out of both groups.
             If None, performs exact matching on (gene, efo_id) without expansion.
         baseline_evidence: Baseline genetic evidence for prioritized mode (optional).
             Same format as targets. When provided, the "no evidence" group excludes

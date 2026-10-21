@@ -12,6 +12,7 @@ from ct_validation.config.schema import DEFAULT_PHASE_TRANSITIONS, Config, Thres
 from ct_validation.data.schema import CLINICAL_TRIALS, GENETIC_EVIDENCE, SIMILARITY_LOOKUP
 from ct_validation.validation.enrichment import calculate_all_enrichments
 from ct_validation.validation.matching import (
+    _setup_source,
     check_similarity_lookup,
     create_matched_pairs_df,
     create_matched_pairs_set,
@@ -30,6 +31,15 @@ class MissingOngoingWarning(UserWarning):
     and Tsepilov et al. 2026, and the only reading available when the source carries no
     trial status. Its own class so those callers can silence exactly this, rather than
     every UserWarning their program emits.
+    """
+
+
+class UnmatchableDiseaseWarning(UserWarning):
+    """Raised when inputs carry efo_ids absent from similarity_lookup.
+
+    Matching joins every disease through the lookup, so such ids can never be matched;
+    clinical-trial pairs carrying one are left out of both groups. Its own class so callers
+    can silence exactly this, rather than every UserWarning their program emits.
     """
 
 
@@ -175,6 +185,53 @@ def _load_clinical_trials(clinical_trials: pd.DataFrame | str | Path) -> pd.Data
     )
 
 
+def _drop_unmatchable_diseases(
+    ct: pd.DataFrame,
+    similarity_lookup: _DataInput | None,
+    con: duckdb.DuckDBPyConnection,
+) -> pd.DataFrame:
+    """
+    Leave out clinical-trial pairs whose efo_id is absent from similarity_lookup.
+
+    Matching joins clinical trials on the lookup's efo_id_2, so such a pair cannot be
+    compared with any evidence.
+    """
+    if similarity_lookup is None:
+        return ct
+
+    _setup_source(con, "sim", similarity_lookup)
+    lookup_ids = con.execute(
+        # sql
+        "SELECT DISTINCT efo_id_2 FROM sim WHERE efo_id_2 IS NOT NULL",
+    ).df()["efo_id_2"]
+
+    unmatchable = ~ct["efo_id"].isin(lookup_ids)
+    if not unmatchable.any():
+        return ct
+
+    # vc > 0 skips unused categories of a categorical efo_id.
+    vc = ct.loc[unmatchable, "efo_id"].value_counts()
+    examples = ", ".join(vc[vc > 0].index[:3])
+    if unmatchable.all():
+        lookup_examples = ", ".join(sorted(lookup_ids)[:3])
+        raise ValueError(
+            f"clinical_trials has no efo_id present in similarity_lookup (e.g. {examples}; "
+            f"the lookup has {lookup_examples}); check that both use the same id format, "
+            "e.g. EFO:0000270 rather than EFO_0000270",
+        )
+
+    n_dropped = int(unmatchable.sum())
+    warnings.warn(
+        f"clinical_trials: {n_dropped:,} of {len(ct):,} pairs ({n_dropped / len(ct):.1%}) "
+        f"have an efo_id absent from similarity_lookup (e.g. {examples}) and are left out: "
+        "no evidence can match them, so they belong to neither group. Silence this with "
+        "warnings.filterwarnings('ignore', category=UnmatchableDiseaseWarning).",
+        UnmatchableDiseaseWarning,
+        stacklevel=3,
+    )
+    return ct[~unmatchable]
+
+
 def _prepare_clinical_trials(
     ct: pd.DataFrame,
     target_pairs: set[tuple[str, str]],
@@ -269,8 +326,10 @@ def validate(
             Symmetric EFO semantic similarity pairs (diagonal has similarity=1.0).
             Matching probes a single orientation, so the table MUST be symmetric; pass
             check_similarity=True to verify (or call check_similarity_lookup() once
-            yourself before a validation loop). If None, performs exact matching on
-            (gene, efo_id) without expansion.
+            yourself before a validation loop). A clinical_trials pair whose efo_id is
+            absent from the lookup cannot be compared with any evidence, so it is left
+            out of both groups and an UnmatchableDiseaseWarning is issued. If None,
+            performs exact matching on (gene, efo_id) without expansion.
         baseline_evidence: gene, efo_id (optional)
             Gene-indication pairs for baseline comparison in prioritized mode.
         check_similarity: bool (default False)
@@ -347,6 +406,8 @@ def validate(
 
     # Shared connection for batch efficiency
     con = duckdb.connect()
+
+    ct_all = _drop_unmatchable_diseases(ct_all, p.similarity_lookup, con)
 
     # Match baseline once (shared across all target sets)
     baseline_pairs: set[tuple[str, str]] = set()

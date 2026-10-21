@@ -93,6 +93,8 @@ def main(
                            still running below phase_to.
         targets:           gene, efo_id
         similarity_lookup: efo_id_1, efo_id_2, similarity
+                           clinical_trials pairs whose efo_id is absent from it cannot
+                           match any evidence and are left out of both groups.
         baseline_evidence: gene, efo_id (optional)
 
     Output Schema:

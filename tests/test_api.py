@@ -4,7 +4,7 @@ import warnings
 
 import pandas as pd
 import pytest
-from ct_validation import MissingOngoingWarning, validate
+from ct_validation import MissingOngoingWarning, UnmatchableDiseaseWarning, validate
 
 
 def test_validate_baseline_mode(clinical_trials_df, genetic_evidence_df, similarity_lookup_df):
@@ -626,3 +626,188 @@ def test_validate_does_not_warn_when_ongoing_column_is_present(
         validate(clinical_trials=ongoing_clinical_trials_df, targets=genetic_evidence_df)
 
     assert not [w for w in caught if "is_ongoing" in str(w.message)]
+
+
+# --- UnmatchableDiseaseWarning: CT rows whose efo_id is absent from the lookup ---
+
+_LOOKUP_KW = {"similarity_threshold": 0.8}
+
+
+def _unmatchable(caught):
+    return [w for w in caught if issubclass(w.category, UnmatchableDiseaseWarning)]
+
+
+def _validate_recording(**kwargs):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = validate(**kwargs)
+    return result, _unmatchable(caught)
+
+
+def test_unmatchable_row_is_left_out_like_a_hand_removed_row(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    """A CT row with an id absent from the lookup counts as if it were not in the input."""
+    kept = clinical_trials_df[clinical_trials_df["efo_id"] != "EFO:006"]
+
+    full, _ = _validate_recording(
+        clinical_trials=clinical_trials_df,
+        targets=genetic_evidence_df,
+        similarity_lookup=similarity_lookup_df,
+        **_LOOKUP_KW,
+    )
+    by_hand, _ = _validate_recording(
+        clinical_trials=kept,
+        targets=genetic_evidence_df,
+        similarity_lookup=similarity_lookup_df,
+        **_LOOKUP_KW,
+    )
+
+    pd.testing.assert_frame_equal(full, by_hand)
+
+
+def test_unmatchable_warning_names_count_and_example(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    """One warning reports how many rows were dropped and an example id."""
+    _, caught = _validate_recording(
+        clinical_trials=clinical_trials_df,
+        targets=genetic_evidence_df,
+        similarity_lookup=similarity_lookup_df,
+        **_LOOKUP_KW,
+    )
+
+    assert len(caught) == 1
+    assert "1 of 10" in str(caught[0].message)
+    assert "EFO:006" in str(caught[0].message)
+
+
+def test_no_unmatchable_warning_when_all_ids_are_in_lookup(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    """Nothing to drop, nothing to warn about."""
+    ct = clinical_trials_df[clinical_trials_df["efo_id"] != "EFO:006"]
+
+    _, caught = _validate_recording(
+        clinical_trials=ct,
+        targets=genetic_evidence_df,
+        similarity_lookup=similarity_lookup_df,
+        **_LOOKUP_KW,
+    )
+
+    assert caught == []
+
+
+def test_no_lookup_means_no_drop_and_no_unmatchable_warning(
+    clinical_trials_df,
+    genetic_evidence_df,
+):
+    """Exact matching keeps every CT row, including ids no lookup would contain."""
+    (_, trials), caught = _validate_recording(
+        clinical_trials=clinical_trials_df,
+        targets=genetic_evidence_df,
+        similarity_lookup=None,
+        return_trials=True,
+    )
+
+    assert caught == []
+    assert len(trials) == len(clinical_trials_df)
+
+
+def test_unmatchable_warning_once_per_batch_call(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    """Batch mode checks the CT once, not once per target set."""
+    _, caught = _validate_recording(
+        clinical_trials=clinical_trials_df,
+        targets=[genetic_evidence_df, genetic_evidence_df, genetic_evidence_df],
+        similarity_lookup=similarity_lookup_df,
+        **_LOOKUP_KW,
+    )
+
+    assert len(caught) == 1
+
+
+def test_returned_trials_exclude_unmatchable_row(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    """return_trials shows the rows that were actually counted."""
+    (_, trials), _ = _validate_recording(
+        clinical_trials=clinical_trials_df,
+        targets=genetic_evidence_df,
+        similarity_lookup=similarity_lookup_df,
+        return_trials=True,
+        **_LOOKUP_KW,
+    )
+
+    assert "EFO:006" not in set(trials["efo_id"])
+    assert len(trials) == len(clinical_trials_df) - 1
+
+
+def test_unmatchable_drop_works_with_lookup_parquet_path(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+    tmp_parquet_files,
+):
+    """A lookup given as a parquet path behaves like the DataFrame."""
+    from_df, _ = _validate_recording(
+        clinical_trials=clinical_trials_df,
+        targets=genetic_evidence_df,
+        similarity_lookup=similarity_lookup_df,
+        **_LOOKUP_KW,
+    )
+    from_path, caught = _validate_recording(
+        clinical_trials=clinical_trials_df,
+        targets=genetic_evidence_df,
+        similarity_lookup=tmp_parquet_files["similarity"],
+        **_LOOKUP_KW,
+    )
+
+    pd.testing.assert_frame_equal(from_df, from_path)
+    assert len(caught) == 1
+
+
+def test_every_ct_id_absent_from_lookup_raises(genetic_evidence_df, similarity_lookup_df):
+    """A wholesale id-format mismatch raises rather than returning an empty result."""
+    ct = pd.DataFrame(
+        {
+            "gene": ["GENE1", "GENE2"],
+            "efo_id": ["EFO_001", "EFO_002"],
+            "max_phase": [1, 2],
+        }
+    )
+
+    with pytest.raises(ValueError, match="similarity_lookup"):
+        validate(
+            clinical_trials=ct,
+            targets=genetic_evidence_df,
+            similarity_lookup=similarity_lookup_df,
+            **_LOOKUP_KW,
+        )
+
+
+def test_unmatchable_warning_points_at_caller(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    """stacklevel attributes the warning to the code that called validate()."""
+    _, caught = _validate_recording(
+        clinical_trials=clinical_trials_df,
+        targets=genetic_evidence_df,
+        similarity_lookup=similarity_lookup_df,
+        **_LOOKUP_KW,
+    )
+
+    assert caught[0].filename == __file__
