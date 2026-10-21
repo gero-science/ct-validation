@@ -390,10 +390,9 @@ uv run pytest tests/ -v
 > target–indication evidence against clinical trial outcomes._ Bioinformatics (2026).
 > https://doi.org/10.1093/bioinformatics/btag788
 
-Release used in the paper (v0.4.3)
-[10.5281/zenodo.22901497](https://doi.org/10.5281/zenodo.22901497) · its benchmark data
-[10.5281/zenodo.22901451](https://doi.org/10.5281/zenodo.22901451) · machine-readable metadata in
-[CITATION.cff](CITATION.cff).
+- Release used in the paper (v0.4.3) [10.5281/zenodo.22901497](https://doi.org/10.5281/zenodo.22901497)
+- its benchmark data [10.5281/zenodo.22901451](https://doi.org/10.5281/zenodo.22901451)
+- machine-readable metadata in [CITATION.cff](CITATION.cff).
 
 ## License
 
