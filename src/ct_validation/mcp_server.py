@@ -61,6 +61,7 @@ def ct_validate(
     baseline_evidence: str | list[dict] | None = None,
     similarity_threshold: float | None = None,
     phase_transitions: list[list[int]] | None = None,
+    gene_universe: str | list[str] | None = None,
 ) -> list[dict]:
     """Calculate clinical trial phase transition enrichment for gene-indication pairs.
 
@@ -89,6 +90,8 @@ def ct_validate(
             Only used when similarity_lookup is provided.
         phase_transitions: Phase transitions to analyze as [[from, to], ...].
             Default: [[1,2], [2,3], [3,4], [1,4]].
+        gene_universe: Genes to restrict the analysis to, e.g. protein-coding genes (optional).
+            Path to a text file with one gene per line, or a list of gene symbols.
 
     Returns:
         List of dicts with enrichment results per phase transition:
@@ -114,6 +117,7 @@ def ct_validate(
         baseline_evidence=baseline_input,
         similarity_threshold=similarity_threshold,
         phase_transitions=parsed_transitions,
+        gene_universe=set(gene_universe) if isinstance(gene_universe, list) else gene_universe,
     )
 
     return result.to_dict(orient="records")

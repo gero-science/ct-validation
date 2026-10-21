@@ -2,7 +2,9 @@
 
 import warnings
 
+import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 from ct_validation import MissingOngoingWarning, UnmatchableDiseaseWarning, validate
 
@@ -851,3 +853,409 @@ def test_target_id_only_in_lookup_efo_id_2_is_unmatchable(
 
     assert len(caught) == 1
     assert "EFO:004" in str(caught[0].message)
+
+
+# --- Same results for every input representation (Arrow strings, categoricals, paths) ---
+
+_ID_COLS = ("gene", "efo_id", "efo_id_1", "efo_id_2")
+_BASELINE = pd.DataFrame({"gene": ["GENE3", "GENE4"], "efo_id": ["EFO:001", "EFO:005"]})
+_PAIR_KW = {
+    "phase_transitions": [(1, 2), (2, 3)],
+    "return_trials": True,
+    "return_matched_pairs": True,
+}
+
+_STRING_DTYPES = [
+    pytest.param("string[pyarrow]", id="string[pyarrow]"),
+    pytest.param(pd.ArrowDtype(pa.string()), id="ArrowDtype-string"),
+    pytest.param(
+        "str",
+        id="pandas3-str",
+        marks=pytest.mark.skipif(
+            int(pd.__version__.split(".")[0]) < 3,
+            reason="default str dtype needs pandas >= 3",
+        ),
+    ),
+]
+
+
+def _with_dtype(df, dtype):
+    """Cast the id columns of df, whichever of them it has, to dtype."""
+    return df.astype({c: dtype for c in _ID_COLS if c in df.columns})
+
+
+def _run_quiet(**kwargs):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return validate(**kwargs)
+
+
+def _objectify(df):
+    """Id columns as object: result frames keep whatever string dtype the input had."""
+    ids = ("gene", "efo_id", "ct_efo_id", "ge_efo_id")
+    return df.astype({c: object for c in ids if c in df.columns})
+
+
+def _assert_same_batch(got, expected, pairs_as_object=False):
+    """Enrichment and matched pairs exactly equal; trials equal once ids are object."""
+    assert len(got) == len(expected)
+    for (g_enrich, g_trials, g_pairs), (e_enrich, e_trials, e_pairs) in zip(got, expected):
+        pd.testing.assert_frame_equal(g_enrich, e_enrich, check_exact=True)
+        if pairs_as_object:  # categorical ids pass through to the pairs frame
+            g_pairs, e_pairs = _objectify(g_pairs), _objectify(e_pairs)
+        pd.testing.assert_frame_equal(g_pairs, e_pairs, check_exact=True)
+        pd.testing.assert_frame_equal(_objectify(g_trials), _objectify(e_trials), check_exact=True)
+
+
+def _batch_inputs(clinical_trials_df, genetic_evidence_df, similarity_lookup_df):
+    """Object-string inputs, the reference: on pandas 3 the fixtures default to str."""
+    ge = _with_dtype(genetic_evidence_df, object)
+    return {
+        "clinical_trials": _with_dtype(clinical_trials_df, object),
+        "targets": [ge, ge.iloc[:3]],
+        "similarity_lookup": _with_dtype(similarity_lookup_df, object),
+        "baseline_evidence": _with_dtype(_BASELINE, object),
+        **_PAIR_KW,
+    }
+
+
+@pytest.mark.parametrize("dtype", _STRING_DTYPES)
+def test_arrow_string_inputs_give_same_result_as_object_inputs(
+    dtype,
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    inputs = _batch_inputs(clinical_trials_df, genetic_evidence_df, similarity_lookup_df)
+    arrow_inputs = {
+        **inputs,
+        "clinical_trials": _with_dtype(inputs["clinical_trials"], dtype),
+        "targets": [_with_dtype(t, dtype) for t in inputs["targets"]],
+        "similarity_lookup": _with_dtype(inputs["similarity_lookup"], dtype),
+        "baseline_evidence": _with_dtype(_BASELINE, dtype),
+    }
+
+    _assert_same_batch(_run_quiet(**arrow_inputs), _run_quiet(**inputs))
+
+
+@pytest.mark.parametrize("dtype", _STRING_DTYPES)
+def test_missing_values_in_arrow_targets_and_lookup_match_object_result(
+    dtype,
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    ge = pd.concat(
+        [genetic_evidence_df, pd.DataFrame({"gene": [None], "efo_id": ["EFO:001"]})],
+        ignore_index=True,
+    )
+    sim = pd.concat(
+        [
+            similarity_lookup_df,
+            pd.DataFrame(
+                {
+                    "efo_id_1": [None, "EFO:001"],
+                    "efo_id_2": ["EFO:001", None],
+                    "similarity": [0.9, 0.9],
+                },
+            ),
+        ],
+        ignore_index=True,
+    )
+    inputs = {
+        **_batch_inputs(clinical_trials_df, ge, sim),
+        "targets": [_with_dtype(ge, object)],
+    }
+    arrow_inputs = {
+        **inputs,
+        "targets": [_with_dtype(ge, dtype)],
+        "similarity_lookup": _with_dtype(sim, dtype),
+    }
+
+    _assert_same_batch(_run_quiet(**arrow_inputs), _run_quiet(**inputs))
+
+
+def _unmatchable_message(**kwargs):
+    with pytest.warns(UnmatchableDiseaseWarning) as caught:
+        validate(**kwargs)
+    return str(_unmatchable(caught)[0].message)
+
+
+@pytest.mark.parametrize("dtype", _STRING_DTYPES)
+def test_unmatchable_warning_text_is_the_same_for_arrow_and_object_lookup(
+    dtype,
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    kwargs = {
+        "clinical_trials": clinical_trials_df,
+        "targets": genetic_evidence_df,
+        **_LOOKUP_KW,
+    }
+
+    arrow = _unmatchable_message(
+        **kwargs,
+        similarity_lookup=_with_dtype(similarity_lookup_df, dtype),
+    )
+    obj = _unmatchable_message(
+        **kwargs,
+        similarity_lookup=_with_dtype(similarity_lookup_df, object),
+    )
+
+    assert arrow == obj
+
+
+@pytest.mark.parametrize("dtype", _STRING_DTYPES)
+def test_all_unmatchable_error_text_is_the_same_for_arrow_and_object_lookup(
+    dtype,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    ct = pd.DataFrame(
+        {
+            "gene": ["GENE1", "GENE2", "GENE3"],
+            "efo_id": ["EFO_003", "EFO_001", "EFO_002"],
+            "max_phase": [1, 2, 3],
+        },
+    )
+    lookup = pd.concat(
+        [
+            similarity_lookup_df,
+            pd.DataFrame({"efo_id_1": ["EFO:001"], "efo_id_2": [None], "similarity": [0.9]}),
+        ],
+        ignore_index=True,
+    )
+    kwargs = {"clinical_trials": ct, "targets": genetic_evidence_df, **_LOOKUP_KW}
+
+    with pytest.raises(ValueError, match="similarity_lookup") as arrow:
+        validate(**kwargs, similarity_lookup=_with_dtype(lookup, dtype))
+    with pytest.raises(ValueError, match="similarity_lookup") as obj:
+        validate(**kwargs, similarity_lookup=_with_dtype(lookup, object))
+
+    assert str(arrow.value) == str(obj.value)
+
+
+def _unmatchable_messages(clinical_trials, evidence_inputs):
+    _, caught = _validate_recording(
+        clinical_trials=clinical_trials,
+        **evidence_inputs,
+        **_LOOKUP_KW,
+    )
+    return [str(w.message) for w in caught]
+
+
+def _warning_inputs(genetic_evidence_df, similarity_lookup_df, dtype):
+    """Targets with an absent id and an efo_id_2-only id, a baseline with an absent id."""
+    ge = _with_dtype(genetic_evidence_df, object)
+    old = pd.DataFrame({"gene": ["GENE9"], "efo_id": ["EFO:OLD"]})
+    only_2 = pd.DataFrame({"gene": ["GENE9"], "efo_id": ["EFO:004"]})
+    baseline = pd.concat([_BASELINE, old], ignore_index=True)
+    return {
+        "targets": [
+            _with_dtype(pd.concat([ge, t], ignore_index=True), dtype) for t in (old, only_2)
+        ],
+        "baseline_evidence": _with_dtype(baseline, dtype),
+        "similarity_lookup": _with_dtype(similarity_lookup_df, dtype),
+    }
+
+
+@pytest.mark.parametrize("dtype", _STRING_DTYPES)
+def test_unmatchable_warnings_are_the_same_for_arrow_and_object_inputs(
+    dtype,
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    ct = _with_dtype(clinical_trials_df, object)
+
+    arrow = _unmatchable_messages(
+        ct,
+        _warning_inputs(genetic_evidence_df, similarity_lookup_df, dtype),
+    )
+    obj = _unmatchable_messages(
+        ct,
+        _warning_inputs(genetic_evidence_df, similarity_lookup_df, object),
+    )
+
+    assert len(obj) == 4  # clinical_trials, baseline_evidence, targets[0], targets[1]
+    assert arrow == obj
+
+
+def test_unmatchable_warnings_are_the_same_for_parquet_and_dataframe_lookup(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+    tmp_path,
+):
+    path = tmp_path / "similarity.parquet"
+    similarity_lookup_df.to_parquet(path)
+    inputs = _warning_inputs(genetic_evidence_df, similarity_lookup_df, object)
+
+    from_df = _unmatchable_messages(clinical_trials_df, inputs)
+    from_path = _unmatchable_messages(clinical_trials_df, {**inputs, "similarity_lookup": path})
+
+    assert from_path == from_df
+
+
+@pytest.mark.parametrize("dtype", _STRING_DTYPES)
+def test_missing_target_id_is_not_counted_in_arrow_unmatchable_warning(
+    dtype,
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    ct = _with_dtype(clinical_trials_df, object)
+    extra = pd.DataFrame({"gene": ["GENE9", "GENE8"], "efo_id": ["EFO:OLD", None]})
+    ge = pd.concat([_with_dtype(genetic_evidence_df, object), extra], ignore_index=True)
+
+    def messages(d):
+        return _unmatchable_messages(
+            ct,
+            {
+                "targets": _with_dtype(ge, d),
+                "similarity_lookup": _with_dtype(similarity_lookup_df, d),
+            },
+        )
+
+    obj = messages(object)
+    assert "targets: 1 of 9 rows" in obj[-1]
+    assert messages(dtype) == obj
+
+
+def test_float32_similarity_at_threshold_gives_same_result_for_dataframe_and_parquet(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+    tmp_path,
+):
+    """The GENE1/EFO:002 pair hinges on a float32(0.9) row at threshold 0.9."""
+    lookup = similarity_lookup_df.assign(
+        similarity=np.array([1.0, 0.9, 0.75, 0.6, 0.55, 1.0], dtype="float32"),
+    )
+    path = tmp_path / "similarity.parquet"
+    lookup.to_parquet(path)
+    kwargs = {
+        "clinical_trials": clinical_trials_df,
+        "targets": genetic_evidence_df,
+        "similarity_threshold": 0.9,
+        **_PAIR_KW,
+    }
+
+    from_df = _run_quiet(**kwargs, similarity_lookup=lookup)
+    from_path = _run_quiet(**kwargs, similarity_lookup=path)
+
+    for got, expected in zip(from_df, from_path):
+        pd.testing.assert_frame_equal(got, expected, check_exact=True)
+
+
+@pytest.mark.parametrize("dtype", _STRING_DTYPES)
+def test_empty_arrow_target_in_batch_gives_string_typed_matched_pair_ids(
+    dtype,
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    results = _run_quiet(
+        clinical_trials=_with_dtype(clinical_trials_df, dtype),
+        targets=[
+            _with_dtype(genetic_evidence_df, dtype),
+            _with_dtype(genetic_evidence_df.iloc[:0], dtype),
+        ],
+        similarity_lookup=_with_dtype(similarity_lookup_df, dtype),
+        return_matched_pairs=True,
+    )
+
+    empty_pairs = results[1][1]
+    assert empty_pairs.empty
+    assert pd.api.types.is_string_dtype(empty_pairs["ge_efo_id"])
+
+
+_CATEGORICAL_DTYPES = [
+    pytest.param("category", id="categorical"),
+    pytest.param(pd.ArrowDtype(pa.dictionary(pa.int8(), pa.string())), id="arrow-dictionary"),
+]
+
+
+@pytest.mark.parametrize("dtype", _CATEGORICAL_DTYPES)
+def test_categorical_trial_ids_give_same_result_as_object(
+    dtype,
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    inputs = _batch_inputs(clinical_trials_df, genetic_evidence_df, similarity_lookup_df)
+    categorical_inputs = {
+        **inputs,
+        "clinical_trials": clinical_trials_df.astype({"gene": dtype, "efo_id": dtype}),
+    }
+
+    _assert_same_batch(
+        _run_quiet(**categorical_inputs),
+        _run_quiet(**inputs),
+        pairs_as_object=True,
+    )
+
+
+def test_trial_id_present_in_lookup_only_below_threshold_stays_in_no_group(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    """EFO:003 occurs in the lookup only at 0.6 (threshold 0.8): kept, never matched."""
+    (enrichment, trials), caught = _validate_recording(
+        clinical_trials=clinical_trials_df,
+        targets=genetic_evidence_df,
+        similarity_lookup=similarity_lookup_df,
+        return_trials=True,
+        **_LOOKUP_KW,
+    )
+
+    below = trials[trials["efo_id"] == "EFO:003"]
+    assert len(below) == 2
+    assert not below["has_genetic_evidence"].any()
+    assert "EFO:003" not in str(caught[0].message)
+
+
+# --- A parquet input after a DataFrame input is matched on its own rows ---
+
+_FOUR_PAIRS_CT = pd.DataFrame(
+    {
+        "gene": ["A", "B", "C", "D"],
+        "efo_id": ["EFO:1", "EFO:1", "EFO:1", "EFO:1"],
+        "max_phase": [4, 1, 4, 1],
+    },
+)
+_FOUR_PAIRS_KW = {"clinical_trials": _FOUR_PAIRS_CT, "phase_transitions": [(1, 4)]}
+_ONE_ID_LOOKUP = pd.DataFrame({"efo_id_1": ["EFO:1"], "efo_id_2": ["EFO:1"], "similarity": [1.0]})
+
+
+def _pairs(*genes):
+    return pd.DataFrame({"gene": list(genes), "efo_id": ["EFO:1"] * len(genes)})
+
+
+@pytest.mark.parametrize("similarity_lookup", [None, _ONE_ID_LOOKUP])
+def test_path_target_after_dataframe_target_matches_like_path_target_alone(
+    tmp_path,
+    similarity_lookup,
+):
+    path_target = tmp_path / "b.parquet"
+    _pairs("B", "C").to_parquet(path_target)
+    kw = {**_FOUR_PAIRS_KW, "similarity_lookup": similarity_lookup}
+
+    mixed = _run_quiet(targets=[_pairs("A"), path_target], **kw)
+    alone = _run_quiet(targets=path_target, **kw)
+
+    pd.testing.assert_frame_equal(mixed[1], alone, check_exact=True)
+
+
+def test_path_target_with_dataframe_baseline_matches_dataframe_target(tmp_path):
+    path_target = tmp_path / "t.parquet"
+    target = _pairs("B", "C")
+    target.to_parquet(path_target)
+    kw = {**_FOUR_PAIRS_KW, "baseline_evidence": _pairs("A", "D")}
+
+    via_path = _run_quiet(targets=path_target, **kw)
+    via_df = _run_quiet(targets=target, **kw)
+
+    pd.testing.assert_frame_equal(via_path, via_df, check_exact=True)

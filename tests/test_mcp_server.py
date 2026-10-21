@@ -5,6 +5,8 @@ import json
 import pandas as pd
 import pytest
 
+from ct_validation import validate
+
 mcp = pytest.importorskip("mcp", reason="mcp not installed")
 from ct_validation.mcp_server import _to_input, ct_validate, expand_disease_set  # noqa: E402
 
@@ -281,3 +283,50 @@ def test_expand_disease_set_threshold_one_returns_only_input():
     )
     # With threshold 1.0 get_expanded_disease_set returns only the input set
     assert result == ["EFO:001"]
+
+
+# ---------------------------------------------------------------------------
+# ct_validate — gene_universe
+# ---------------------------------------------------------------------------
+
+UNIVERSE = ["GENE1", "GENE2", "GENE3"]
+
+
+def _inline_kwargs():
+    return {
+        "clinical_trials": CLINICAL_TRIALS_ROWS,
+        "targets": TARGETS_ROWS,
+        "similarity_lookup": SIMILARITY_ROWS,
+    }
+
+
+def test_ct_validate_gene_universe_list_matches_validate_with_set():
+    expected = validate(
+        clinical_trials=pd.DataFrame(CLINICAL_TRIALS_ROWS),
+        targets=pd.DataFrame(TARGETS_ROWS),
+        similarity_lookup=pd.DataFrame(SIMILARITY_ROWS),
+        gene_universe=set(UNIVERSE),
+    )
+
+    result = ct_validate(**_inline_kwargs(), gene_universe=UNIVERSE)
+
+    pd.testing.assert_frame_equal(pd.DataFrame(result), expected)
+
+
+def test_ct_validate_gene_universe_list_changes_results():
+    restricted = ct_validate(**_inline_kwargs(), gene_universe=UNIVERSE)
+
+    unrestricted = ct_validate(**_inline_kwargs())
+
+    assert not pd.DataFrame(restricted).equals(pd.DataFrame(unrestricted))
+
+
+def test_ct_validate_gene_universe_file_matches_list(tmp_path):
+    universe_file = tmp_path / "universe.txt"
+    universe_file.write_text("\n".join(UNIVERSE) + "\n")
+
+    from_file = ct_validate(**_inline_kwargs(), gene_universe=str(universe_file))
+
+    from_list = ct_validate(**_inline_kwargs(), gene_universe=UNIVERSE)
+
+    pd.testing.assert_frame_equal(pd.DataFrame(from_file), pd.DataFrame(from_list))

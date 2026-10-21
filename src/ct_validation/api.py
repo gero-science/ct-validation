@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import duckdb
+import numpy as np
 import pandas as pd
+import pyarrow as pa
 
 from ct_validation.config import load_config
 from ct_validation.config.schema import DEFAULT_PHASE_TRANSITIONS, Config, Thresholds
@@ -188,6 +190,54 @@ def _load_clinical_trials(clinical_trials: pd.DataFrame | str | Path) -> pd.Data
     )
 
 
+def _is_arrow_string(dtype) -> bool:
+    """
+    Tell whether a dtype holds Arrow-backed strings (pandas 3 str, string[pyarrow]).
+
+    Not pd.api.types.is_string_dtype, which also matches categoricals on pandas 2.
+    """
+    if isinstance(dtype, pd.StringDtype):
+        return dtype.storage == "pyarrow"
+    if isinstance(dtype, pd.ArrowDtype):
+        arrow_type = dtype.pyarrow_dtype
+        return pa.types.is_string(arrow_type) or pa.types.is_large_string(arrow_type)
+    return False
+
+
+def _matching_source(data: _DataInput, columns: list[str]) -> _DataInput:
+    """
+    Narrow a DataFrame to the columns matching reads, with Arrow-backed strings as object.
+
+    duckdb converts every Arrow-backed string column of a registered frame at each query,
+    read or not, while it scans object strings in place. An all-null column keeps its
+    dtype, so duckdb still types it as a string.
+    """
+    if not isinstance(data, pd.DataFrame):
+        return data
+    df = data[columns]
+    arrow = [c for c in columns if _is_arrow_string(df[c].dtype) and df[c].notna().any()]
+    return df.astype(dict.fromkeys(arrow, object)) if arrow else df
+
+
+def _lookup_ids(
+    similarity_lookup: _DataInput,
+    column: str,
+    con: duckdb.DuckDBPyConnection,
+) -> pd.Series | pd.api.extensions.ExtensionArray:
+    """Distinct non-null ids in one column of the unfiltered similarity_lookup."""
+    # duckdb would first convert every Arrow string column of the frame; on object
+    # strings and paths its DISTINCT is the faster one.
+    if isinstance(similarity_lookup, pd.DataFrame) and _is_arrow_string(
+        similarity_lookup[column].dtype,
+    ):
+        return similarity_lookup[column].dropna().unique()
+    _setup_source(con, "sim", similarity_lookup)
+    return con.execute(
+        # sql
+        f"SELECT DISTINCT {column} FROM sim WHERE {column} IS NOT NULL",
+    ).df()[column]
+
+
 def _drop_unmatchable_diseases(
     ct: pd.DataFrame,
     similarity_lookup: _DataInput | None,
@@ -202,12 +252,7 @@ def _drop_unmatchable_diseases(
     if similarity_lookup is None:
         return ct
 
-    _setup_source(con, "sim", similarity_lookup)
-    lookup_ids = con.execute(
-        # sql
-        "SELECT DISTINCT efo_id_2 FROM sim WHERE efo_id_2 IS NOT NULL",
-    ).df()["efo_id_2"]
-
+    lookup_ids = _lookup_ids(similarity_lookup, "efo_id_2", con)
     unmatchable = ~ct["efo_id"].isin(lookup_ids)
     if not unmatchable.any():
         return ct
@@ -241,14 +286,11 @@ def _warn_unmatchable(
     similarity_lookup: _DataInput,
 ) -> None:
     """Issue an UnmatchableDiseaseWarning per evidence input with efo_ids absent from the lookup."""
-    _setup_source(con, "unmatchable_sim", similarity_lookup)
-    con.execute(
-        "CREATE OR REPLACE TEMP TABLE unmatchable_ids AS "
-        "SELECT DISTINCT efo_id_1 AS efo_id FROM unmatchable_sim",
-    )
+    lookup_ids = _lookup_ids(similarity_lookup, "efo_id_1", con)
+    con.register("unmatchable_ids", pd.DataFrame({"efo_id": lookup_ids}))
     for i, (name, data) in enumerate(inputs.items()):
         view = f"unmatchable_input_{i}"
-        _setup_source(con, view, data)
+        _setup_source(con, view, _matching_source(data, ["efo_id"]))
         # sql
         n, missing, examples = con.execute(
             f"""
@@ -260,6 +302,8 @@ def _warn_unmatchable(
             WHERE d.efo_id IS NOT NULL
             """,
         ).fetchone()
+        # Releases the projected copy before matching starts
+        con.unregister(view)
         if missing:
             warnings.warn(
                 f"{name}: {missing:,} of {n:,} rows ({100 * missing / n:.1f}%) have an efo_id "
@@ -270,7 +314,36 @@ def _warn_unmatchable(
                 UnmatchableDiseaseWarning,
                 stacklevel=3,
             )
-    con.execute("DROP TABLE unmatchable_ids")
+    con.unregister("unmatchable_ids")
+
+
+def _matching_lookup(
+    similarity_lookup: _DataInput | None,
+    threshold: float,
+    con: duckdb.DuckDBPyConnection,
+) -> pd.DataFrame | None:
+    """
+    Load the lookup rows at or above threshold once, for every matching query to read.
+
+    duckdb pushes no filter into a registered frame and plans its joins from the full row
+    count. Matching applies the threshold again, so this only narrows what it scans.
+    """
+    if similarity_lookup is None:
+        return None
+
+    columns = ["efo_id_1", "efo_id_2", "similarity"]
+    if isinstance(similarity_lookup, pd.DataFrame):
+        # A nullable NA becomes NaN and compares False, as NULL does in duckdb.
+        similarity = similarity_lookup["similarity"].to_numpy("float64", na_value=np.nan)
+        lookup = similarity_lookup.loc[similarity >= threshold]
+    else:
+        lookup = con.execute(
+            # sql
+            "SELECT efo_id_1, efo_id_2, similarity FROM read_parquet($path) "
+            "WHERE similarity >= $threshold",
+            {"path": str(similarity_lookup), "threshold": threshold},
+        ).df()
+    return _matching_source(lookup, columns)
 
 
 def _prepare_clinical_trials(
@@ -291,9 +364,10 @@ def _prepare_clinical_trials(
     if gene_universe is not None:
         ct = ct[ct["gene"].isin(gene_universe)]
 
-    pairs = list(zip(ct["gene"], ct["efo_id"]))
-    has_target = [p in target_pairs for p in pairs]
-    has_baseline = [p in baseline_pairs for p in pairs]
+    # .array: pandas 2 fails to build the index from a Series of Arrow dictionary dtype.
+    keys = pd.MultiIndex.from_arrays([ct["gene"].array, ct["efo_id"].array])
+    has_target = keys.isin(list(target_pairs))
+    has_baseline = keys.isin(list(baseline_pairs))
 
     ct = ct.assign(has_genetic_evidence=has_target, _has_baseline=has_baseline)
     ct = ct[ct["has_genetic_evidence"] | ~ct["_has_baseline"]]
@@ -461,25 +535,33 @@ def validate(
             inputs["targets"] = p.targets_list[0]
         _warn_unmatchable(con, inputs, p.similarity_lookup)
 
+    similarity_pairs = _matching_lookup(p.similarity_lookup, p.similarity_threshold, con)
+    ct_source = _matching_source(p.clinical_trials, ["gene", "efo_id"])
+
     # Match baseline once (shared across all target sets)
     baseline_pairs: set[tuple[str, str]] = set()
     if p.baseline_evidence is not None:
         baseline_pairs = create_matched_pairs_set(
-            genetic_evidence=p.baseline_evidence,
-            clinical_trials=p.clinical_trials,
-            similarity_pairs=p.similarity_lookup,
+            genetic_evidence=_matching_source(p.baseline_evidence, ["gene", "efo_id"]),
+            clinical_trials=ct_source,
+            similarity_pairs=similarity_pairs,
             similarity_threshold=p.similarity_threshold,
             gene_universe=gu,
             con=con,
         )
 
+    # Only the columns enrichment reads, as it copies its input per transition. An
+    # absent is_ongoing stays absent: that is what runs it uncensored.
+    enrichment_columns = {"max_phase", "has_genetic_evidence", "is_ongoing", cluster_col}
+
     results = []
     for t in p.targets_list:
+        ge_source = _matching_source(t, ["gene", "efo_id"])
         if return_matched_pairs:
             matched_pairs_df = create_matched_pairs_df(
-                genetic_evidence=t,
-                clinical_trials=p.clinical_trials,
-                similarity_pairs=p.similarity_lookup,
+                genetic_evidence=ge_source,
+                clinical_trials=ct_source,
+                similarity_pairs=similarity_pairs,
                 similarity_threshold=p.similarity_threshold,
                 gene_universe=gu,
                 con=con,
@@ -488,9 +570,9 @@ def validate(
         else:
             matched_pairs_df = None
             target_pairs = create_matched_pairs_set(
-                genetic_evidence=t,
-                clinical_trials=p.clinical_trials,
-                similarity_pairs=p.similarity_lookup,
+                genetic_evidence=ge_source,
+                clinical_trials=ct_source,
+                similarity_pairs=similarity_pairs,
                 similarity_threshold=p.similarity_threshold,
                 gene_universe=gu,
                 con=con,
@@ -504,7 +586,7 @@ def validate(
         )
 
         enrichment = calculate_all_enrichments(
-            df=ct,
+            df=ct.loc[:, ct.columns.isin(enrichment_columns)],
             phase_transitions=p.phase_transitions,
             cluster_col=cluster_col,
             bootstrap_replicates=bootstrap_replicates,
