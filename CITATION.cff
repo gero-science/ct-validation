@@ -27,6 +27,23 @@ authors:
     family-names: Feizi
     affiliation: "GERO PTE. LTD., Singapore"
     email: amir.feizi@gero.ai
+preferred-citation:
+  type: article
+  title: "ct-validation: an open framework for benchmarking target-indication evidence against clinical trial outcomes"
+  journal: Bioinformatics
+  year: 2026
+  month: 10
+  doi: 10.1093/bioinformatics/btag788
+  status: advance-online
+  authors:
+    - given-names: Klim
+      family-names: Kostiuk
+    - given-names: Daniel
+      family-names: Igumnov
+    - given-names: Peter
+      family-names: Fedichev
+    - given-names: Amir
+      family-names: Feizi
 keywords:
   - drug target validation
   - genetic evidence

@@ -5,6 +5,7 @@ An open framework for benchmarking target–indication evidence against clinical
 [![PyPI](https://img.shields.io/pypi/v/ct-validation)](https://pypi.org/project/ct-validation/)
 [![Python](https://img.shields.io/pypi/pyversions/ct-validation)](https://pypi.org/project/ct-validation/)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.21840865-blue)](https://doi.org/10.5281/zenodo.21840865)
+[![Paper](https://img.shields.io/badge/Bioinformatics-10.1093%2Fbioinformatics%2Fbtag788-blue)](https://doi.org/10.1093/bioinformatics/btag788)
 
 <img width="661" height="471" alt="Package schema" src="https://github.com/user-attachments/assets/a5840446-3359-4467-b4be-aa610268e65a" />
 
@@ -370,7 +371,8 @@ uv run pytest tests/ -v
 ## Citation
 
 > Kostiuk K, Igumnov D, Fedichev P, Feizi A. _ct-validation: an open framework for benchmarking
-> target–indication evidence against clinical trial outcomes._ (2026)
+> target–indication evidence against clinical trial outcomes._ Bioinformatics (2026).
+> https://doi.org/10.1093/bioinformatics/btag788
 
 Archived release [10.5281/zenodo.22901497](https://doi.org/10.5281/zenodo.22901497) · benchmark
 data [10.5281/zenodo.22901451](https://doi.org/10.5281/zenodo.22901451) · machine-readable
