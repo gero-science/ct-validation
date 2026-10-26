@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+from ct_validation.efo import EfoOntology, efo_for_remap, remap_efo_ids
 
 log = logging.getLogger(__name__)
 
@@ -97,6 +98,7 @@ def parse_chembl(
     gene_drug_output: Path,
     drug_indication_output: Path,
     min_pchembl: float = 7.0,
+    efo: EfoOntology | None = None,
 ) -> pd.DataFrame:
     """Parse ChEMBL SQLite database to standardized outputs."""
     log.info(f"Opening ChEMBL database: {db_path}")
@@ -105,6 +107,8 @@ def parse_chembl(
     gene_drug = _query_gene_drug(conn, min_pchembl)
     drug_indication = _query_drug_indication(conn)
     conn.close()
+    if efo is not None:
+        drug_indication = remap_efo_ids(drug_indication, efo, label_column="efo_term")
 
     gene_drug_output.parent.mkdir(parents=True, exist_ok=True)
     gene_drug.to_parquet(gene_drug_output, index=False)
@@ -142,10 +146,11 @@ def main():
         with config_path.open() as f:
             cfg = yaml.safe_load(f)
         ct_inputs = cfg.get("clinical_trials", {})
+        mappings = cfg.get("mappings", {})
         thresholds = cfg.get("thresholds", {})
         output_dir = Path(cfg.get("output_dir", "."))
     else:
-        ct_inputs, thresholds, output_dir = {}, {}, Path()
+        ct_inputs, mappings, thresholds, output_dir = {}, {}, {}, Path()
 
     out_dir = args.output_dir or output_dir / "clinical_trials"
 
@@ -154,6 +159,7 @@ def main():
         gene_drug_output=out_dir / "chembl_gene_drug.parquet",
         drug_indication_output=out_dir / "chembl_drug_indication.parquet",
         min_pchembl=args.min_pchembl or thresholds.get("chembl_min_pchembl", 7.0),
+        efo=efo_for_remap(mappings),
     )
 
 

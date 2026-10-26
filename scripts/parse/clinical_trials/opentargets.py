@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 import trial_status
 import yaml
+from ct_validation.efo import EfoOntology, efo_for_remap, remap_efo_ids
 
 log = logging.getLogger(__name__)
 
@@ -148,6 +149,7 @@ def parse_opentargets(
     known_drug_path: Path,
     gene_drug_output: Path,
     drug_indication_output: Path,
+    efo: EfoOntology | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Parse Open Targets known_drug to standardized outputs."""
     log.info(f"Loading Open Targets known_drug from {known_drug_path}")
@@ -161,6 +163,8 @@ def parse_opentargets(
     gene_drug.to_parquet(gene_drug_output, index=False)
 
     drug_indication = parse_drug_indication(df)
+    if efo is not None:
+        drug_indication = remap_efo_ids(drug_indication, efo, label_column="efo_term")
     drug_indication.to_parquet(drug_indication_output, index=False)
 
     log.info(f"Saved to {gene_drug_output} and {drug_indication_output}")
@@ -190,15 +194,17 @@ def main():
         with config_path.open() as f:
             cfg = yaml.safe_load(f)
         ct_inputs = cfg.get("clinical_trials", {})
+        mappings = cfg.get("mappings", {})
         output_dir = Path(cfg.get("output_dir", "."))
     else:
-        ct_inputs, output_dir = {}, Path()
+        ct_inputs, mappings, output_dir = {}, {}, Path()
 
     ct_out = args.output_dir or output_dir / "clinical_trials"
     parse_opentargets(
         known_drug_path=args.known_drug or Path(ct_inputs.get("opentargets_known_drug", "")),
         gene_drug_output=ct_out / "opentargets_gene_drug.parquet",
         drug_indication_output=ct_out / "opentargets_drug_indication.parquet",
+        efo=efo_for_remap(mappings),
     )
 
 

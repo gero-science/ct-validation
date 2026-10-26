@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+from ct_validation.efo import EfoOntology, efo_for_remap, remap_efo_ids
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ def parse_genebass(
     manifest_path: Path,
     output_path: Path,
     max_pvalue: float = 1e-7,
+    efo: EfoOntology | None = None,
 ) -> pd.DataFrame:
     """Parse Genebass to gene-disease associations with EFO mapping."""
     log.info(f"Loading Genebass from {associations_path}")
@@ -68,6 +70,8 @@ def parse_genebass(
 
     # Convert ontology ID format (EFO_xxx -> EFO:xxx, HP_xxx -> HP:xxx, etc.)
     df["efo_id"] = df["efo_id"].str.replace("_", ":", n=1)
+    if efo is not None:
+        df = remap_efo_ids(df, efo)
 
     # Use manifest trait if available, else Genebass description
     df["trait"] = df["manifest_trait"].fillna(df["description"])
@@ -128,6 +132,7 @@ def main():
         manifest_path=args.manifest or Path(mappings.get("ukb_phenotype_manifest", "")),
         output_path=args.output or output_dir / "genetic_evidence" / "genebass.parquet",
         max_pvalue=args.max_pvalue or thresholds.get("genebass_max_pvalue", 1e-7),
+        efo=efo_for_remap(mappings),
     )
 
 

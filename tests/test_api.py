@@ -811,3 +811,23 @@ def test_unmatchable_warning_points_at_caller(
     )
 
     assert caught[0].filename == __file__
+
+
+def test_unmatchable_targets_are_announced_per_input(
+    clinical_trials_df,
+    genetic_evidence_df,
+    similarity_lookup_df,
+):
+    """A target efo_id missing from the lookup supports nothing, so each input says how many."""
+    ct = clinical_trials_df[clinical_trials_df["efo_id"] != "EFO:006"]
+    ge = pd.concat([genetic_evidence_df, pd.DataFrame({"gene": ["GENE9"], "efo_id": ["EFO:OLD"]})])
+
+    _, caught = _validate_recording(
+        clinical_trials=ct,
+        targets=[genetic_evidence_df, ge],
+        similarity_lookup=similarity_lookup_df,
+        **_LOOKUP_KW,
+    )
+
+    assert [str(w.message)[:24] for w in caught] == ["targets[1]: 1 of 9 rows "]
+    assert "EFO:OLD" in str(caught[0].message)
