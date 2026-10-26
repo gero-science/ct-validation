@@ -81,6 +81,26 @@ name: chain to a dead end
 is_obsolete: true
 replaced_by: efo:EFO_0000021
 
+[Term]
+id: efo:EFO_0000026
+name: split with one live successor
+is_obsolete: true
+replaced_by: MONDO:0000001
+replaced_by: MONDO:9999999
+
+[Term]
+id: efo:EFO_0000027
+name: one successor spelled twice
+is_obsolete: true
+replaced_by: http://purl.obolibrary.org/obo/MONDO_0000001
+replaced_by: MONDO:0000001
+
+[Term]
+id: efo:EFO_0000028
+name: chain through a split with one live successor
+is_obsolete: true
+replaced_by: efo:EFO_0000026
+
 [Typedef]
 id: efo:EFO_9999999
 name: a relation, not a term
@@ -120,11 +140,14 @@ def test_replacements_follow_chains(efo):
         "EFO:0000011": "EFO:0000001",
         "EFO:0000012": "Orphanet:1",
         "EFO:0000013": "MONDO:0000001",
+        "EFO:0000026": "MONDO:0000001",
+        "EFO:0000027": "MONDO:0000001",
+        "EFO:0000028": "MONDO:0000001",
     }
 
 
 def test_unresolved(efo):
-    """`consider` only, no replacement, a split, a cycle and a chain to a dead end."""
+    """`consider` only, no replacement, a split into live terms, a cycle and a dead end."""
     assert efo.unresolved == {
         "EFO:0000020",
         "EFO:0000021",
@@ -156,4 +179,6 @@ def test_efo_for_remap(tmp_path):
     path.write_text(OBO)
     assert efo_for_remap({"efo_ontology": str(path)}) is None
     assert efo_for_remap({"efo_ontology": str(path), "efo_remap_obsolete": False}) is None
-    assert efo_for_remap({"efo_ontology": str(path), "efo_remap_obsolete": True}).version == "3.90.0"
+    assert (
+        efo_for_remap({"efo_ontology": str(path), "efo_remap_obsolete": True}).version == "3.90.0"
+    )

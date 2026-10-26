@@ -6,9 +6,10 @@ lookup is built from one. An id that is not a live term of that release can neve
 
 Obsolete terms carry no `is_a`, so they cannot be placed in the lookup; the link from an old
 term to its successor is `replaced_by`. `load_efo` follows it transitively, and `remap_efo_ids`
-rewrites a source's ids before the source groups by them. Obsolete terms with no single live
-successor (only `consider`, several `replaced_by`, nothing, a cycle, or a chain that ends at a
-non-live term) are dropped: they cannot be matched, and keeping them only dilutes the denominator.
+rewrites a source's ids before the source groups by them. Of several `replaced_by`, only the
+live ones count. Obsolete terms with no single live successor (only `consider`, a split into
+several live terms, nothing, a cycle, or a chain that ends at a non-live term) are dropped: they
+cannot be matched, and keeping them only dilutes the denominator.
 """
 
 import logging
@@ -77,18 +78,25 @@ def load_efo(path: str | Path) -> EfoOntology:
     """Load an EFO .obo: its live terms and a resolved obsolete -> successor map."""
     version, terms = _parse_obo(Path(path))
 
-    live, labels, obsolete, replaced_by = set(), {}, set(), {}
+    live, labels, candidates = set(), {}, {}
     for term in terms:
         curie = to_curie(term["id"][0])
         if term.get("is_obsolete") == ["true"]:
-            obsolete.add(curie)
-            # Several successors are a split, which has no single answer
-            if len(term.get("replaced_by", [])) == 1:
-                replaced_by[curie] = to_curie(term["replaced_by"][0])
+            # The IRI and CURIE spellings of one successor count once
+            candidates[curie] = {to_curie(t) for t in term.get("replaced_by", [])}
         else:
             live.add(curie)
             if "name" in term:
                 labels[curie] = term["name"][0]
+    obsolete = set(candidates)
+
+    replaced_by = {}
+    for curie, successors in candidates.items():
+        # Of several successors only the live ones count; more than one left is a split
+        if len(successors) > 1:
+            successors = successors & live
+        if len(successors) == 1:
+            replaced_by[curie] = next(iter(successors))
 
     replacements = {}
     for curie in obsolete:
