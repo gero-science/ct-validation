@@ -240,12 +240,11 @@ def _warn_unmatchable(
     inputs: dict[str, _DataInput],
     similarity_lookup: _DataInput,
 ) -> None:
-    """Issue an UnmatchableDiseaseWarning per input with efo_ids absent from the lookup."""
+    """Issue an UnmatchableDiseaseWarning per evidence input with efo_ids absent from the lookup."""
     _setup_source(con, "unmatchable_sim", similarity_lookup)
-    # sql — both columns, so a lookup that breaks the symmetry contract is not misreported
     con.execute(
         "CREATE OR REPLACE TEMP TABLE unmatchable_ids AS "
-        "SELECT efo_id_1 AS efo_id FROM unmatchable_sim UNION SELECT efo_id_2 FROM unmatchable_sim",
+        "SELECT DISTINCT efo_id_1 AS efo_id FROM unmatchable_sim",
     )
     for i, (name, data) in enumerate(inputs.items()):
         view = f"unmatchable_input_{i}"
