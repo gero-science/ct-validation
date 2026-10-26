@@ -140,7 +140,8 @@ never lower it out of a higher one.
 
 Each source is coded against the EFO release it was built with, and the similarity lookup
 against one release. Matching joins through the lookup, so an `efo_id` the lookup lacks can never
-be supported, yet its pair still counts in the denominator.
+match: `validate()` leaves clinical-trial pairs with one out of both groups, and evidence with
+one supports nothing.
 
 With `mappings.efo_remap_obsolete` in `configs/parsing.yaml`, **every
 parser rewrites obsolete ids to their live successor** in `mappings.efo_ontology`, following

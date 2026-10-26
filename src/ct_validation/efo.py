@@ -2,14 +2,14 @@
 
 Every source is coded against whichever EFO release it was built with, while the similarity
 lookup is built from one. An id that is not a live term of that release can never be matched
-(matching joins through the lookup, diagonal included) but still counts in the denominator.
+(matching joins through the lookup, diagonal included).
 
 Obsolete terms carry no `is_a`, so they cannot be placed in the lookup; the link from an old
 term to its successor is `replaced_by`. `load_efo` follows it transitively, and `remap_efo_ids`
 rewrites a source's ids before the source groups by them. Of several `replaced_by`, only the
 live ones count. Obsolete terms with no single live successor (only `consider`, a split into
 several live terms, nothing, a cycle, or a chain that ends at a non-live term) are dropped: they
-cannot be matched, and keeping them only dilutes the denominator.
+cannot be matched.
 """
 
 import logging
