@@ -130,11 +130,50 @@ never lower it out of a higher one.
 
 | Resource                          | Version            | Files                                 | Download                                                                                             | Acquisition                                                                                                                                         |
 | --------------------------------- | ------------------ | ------------------------------------- | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| EFO                               | v3.84.0            | `efo.obo`                             | https://github.com/EBISPOT/efo/releases                                                              | `fetch.sh`                                                                                                                                          |
+| EFO                               | v3.84.0            | `efo_v3.84.0.obo`                     | https://github.com/EBISPOT/efo/releases                                                              | `fetch.sh` (`EFO_VERSION`)                                                                                                                          |
 | MeSH descriptors                  | 2023               | `d2023.bin`                           | https://nlmpubs.nlm.nih.gov/projects/mesh/2023/asciimesh/                                            | Data release; read only by the benchmark notebook (oncology flag, tree C04)                                                                         |
 | OxO cross-references              | OxO 1, retrieved on or before 2026-05-08 | MeSH-to-EFO, MONDO/Orphanet/HP-to-EFO | https://www.ebi.ac.uk/spot/oxo                                                                       | Data release, which is the reference copy: a dated snapshot of a live service, so a later query is not guaranteed to reproduce it                    |
 | Pan-UK Biobank phenotype manifest | —                  | `ukb_phenotype_manifest.tsv`          | [Google Sheets](https://docs.google.com/spreadsheets/d/1AeeADtT0U1AukliiNyiVzVRdLYPkTbruQSk38DeutU8) | Data release                                                                                                                                        |
 | Protein-coding genes              | Open Targets 25.12 | `protein_coding_genes.txt`            | —                                                                                                    | `python scripts/parse/gene_universe.py` (`target.biotype == protein_coding`; 20,097 symbols, 634 of them Ensembl IDs for genes with no HGNC symbol) |
+
+### EFO releases and obsolete terms
+
+Each source is coded against the EFO release it was built with, and the similarity lookup
+against one release. Matching joins through the lookup, so an `efo_id` the lookup lacks can never
+be supported, yet its pair still counts in the denominator.
+
+With `mappings.efo_remap_obsolete` in `configs/parsing.yaml`, **every
+parser rewrites obsolete ids to their live successor** in `mappings.efo_ontology`, following
+`replaced_by`, before the source groups by disease; two old ids replaced by one term
+therefore collapse into one pair with the right `max_phase` and `is_ongoing`. It is on
+by default; the paper's parsed data were built with it off.
+
+Against EFO 3.90 this leaves no obsolete ids in any source. What it cannot fix is terms EFO does
+not import: about 9% of TrialPanorama and Minikel CT records. Neither does it make all evidence
+matchable: the R script leaves the OBA (measurements) and PR (proteins) branches out of the lookup
+by design (`--exclude-prefixes`), in the paper as now, and OBA terms make up 14–24% of GWAS
+Catalog, Genebass and Open Targets genetic evidence records.
+
+_ClinVar._ Its third mapping tier queries OLS live, so its hits depend on the date of the query,
+not on the configured EFO release; they are cached in `clinvar_ols_cache.csv`, which a re-run
+reuses. With remapping on, all three tiers accept only terms live in the configured release or
+with a live successor, and the cached hits are remapped like the rest.
+
+### Similarity lookup
+
+`scripts/r/create_efo_similarity_matrix.R` builds the EFO similarity lookup. Its R environment
+is pinned in `scripts/r/pixi.toml` (install [pixi](https://pixi.sh) first; on Apple Silicon,
+`ontologySimilarity` is compiled from CRAN on the first run). From the repository root:
+
+```bash
+pixi run --manifest-path scripts/r/pixi.toml similarity -- \
+    --efo-path data/mappings/efo_v3.90.0.obo \
+    --output data/mappings/efo_full_similarity_matrix_v3.90.0.parquet \
+    --lookup-output data/mappings/efo_similarity_lookup_v3.90.0_0.5.parquet
+```
+
+Without the output flags it overwrites the paper's 3.84 lookup. EFO 3.90 takes about 20 minutes
+and 5 GB of RAM on one core.
 
 ## Minikel et al. (2024) benchmark data
 

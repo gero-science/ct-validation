@@ -68,6 +68,20 @@ def minikel():
 
 
 @pytest.fixture
+def efo_release():
+    """An EFO release where two obsolete ids share one successor and a third has none."""
+    from ct_validation.efo import EfoOntology
+
+    return EfoOntology(
+        version="test",
+        live=frozenset({"EFO:001"}),
+        labels={"EFO:001": "successor"},
+        replacements={"EFO:OLD1": "EFO:001", "EFO:OLD2": "EFO:001"},
+        unresolved=frozenset({"EFO:GONE"}),
+    )
+
+
+@pytest.fixture
 def clinical_trials_df() -> pd.DataFrame:
     """10 clinical trials across phases 1-4."""
     return pd.DataFrame(

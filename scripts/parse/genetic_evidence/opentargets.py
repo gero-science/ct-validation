@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+from ct_validation.efo import EfoOntology, efo_for_remap, remap_efo_ids
 
 log = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ def parse_opentargets(
     min_score: float = 0.5,
     *,
     include_somatic: bool = False,
+    efo: EfoOntology | None = None,
 ) -> pd.DataFrame:
     """Parse OpenTargets genetic evidence associations to gene-disease pairs."""
     df = load_associations(association_dir, min_score, include_somatic=include_somatic)
@@ -101,6 +103,8 @@ def parse_opentargets(
 
     # Normalize disease IDs (MONDO_0001234 -> MONDO:0001234)
     df["efo_id"] = df["diseaseId"].str.replace("_", ":")
+    if efo is not None:
+        df = remap_efo_ids(df, efo)
 
     # Keep best score per gene-disease pair
     result = df.sort_values("score", ascending=False).drop_duplicates(
@@ -152,10 +156,11 @@ def main():
         with config_path.open() as f:
             cfg = yaml.safe_load(f)
         ge_inputs = cfg.get("genetic_evidence", {})
+        mappings = cfg.get("mappings", {})
         thresholds = cfg.get("thresholds", {})
         output_dir = Path(cfg.get("output_dir", "."))
     else:
-        ge_inputs, thresholds, output_dir = {}, {}, Path()
+        ge_inputs, mappings, thresholds, output_dir = {}, {}, {}, Path()
 
     association_key = (
         "opentargets_association_indirect" if args.indirect else "opentargets_association"
@@ -173,6 +178,7 @@ def main():
         if args.min_score is not None
         else thresholds.get("opentargets_min_score", 0.5),
         include_somatic=args.include_somatic,
+        efo=efo_for_remap(mappings),
     )
 
 

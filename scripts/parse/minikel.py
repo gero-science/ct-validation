@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+from ct_validation.efo import EfoOntology, efo_for_remap, remap_efo_ids
 
 log = logging.getLogger(__name__)
 
@@ -33,11 +34,17 @@ def _optional(path: str | None) -> Path | None:
     return Path(path) if path else None
 
 
-def load_mesh_to_efo(mapping_path: Path) -> pd.DataFrame:
-    """Load MeSH -> EFO cross-references, keyed by bare MeSH ID."""
+def load_mesh_to_efo(mapping_path: Path, efo: EfoOntology | None = None) -> pd.DataFrame:
+    """Load MeSH -> EFO cross-references, keyed by bare MeSH ID.
+
+    With `efo`, obsolete EFO ids are remapped first, so the pairs grouped from them below
+    collapse onto the successor term.
+    """
     log.info(f"Loading MeSH to EFO mappings from {mapping_path}")
     mappings = pd.read_csv(mapping_path, sep="\t")
     mappings["mesh_id"] = mappings["curie_id"].str.removeprefix("MeSH:")
+    if efo is not None:
+        mappings = remap_efo_ids(mappings, efo, column="mapped_curie")
     mappings = mappings[["mesh_id", "mapped_curie"]].drop_duplicates()
     log.info(f"Loaded {len(mappings):,} MeSH-EFO edges")
     return mappings
@@ -48,6 +55,7 @@ def parse_clinical_trials(
     mesh_to_efo_path: Path,
     output_path: Path,
     indications_path: Path | None = None,
+    efo: EfoOntology | None = None,
 ) -> pd.DataFrame:
     """Parse Pharmaprojects programmes to censored gene-indication pairs."""
     log.info(f"Loading Pharmaprojects from {pharmaprojects_path}")
@@ -79,7 +87,7 @@ def parse_clinical_trials(
     pp = pp.assign(phase_concluded=pp["phase"] - still_running)
 
     pairs = pp.merge(
-        load_mesh_to_efo(mesh_to_efo_path),
+        load_mesh_to_efo(mesh_to_efo_path, efo),
         left_on="indication_mesh_id",
         right_on="mesh_id",
         how="inner",
@@ -113,6 +121,7 @@ def parse_associations(
     associations_path: Path,
     mesh_to_efo_path: Path,
     output_path: Path,
+    efo: EfoOntology | None = None,
 ) -> pd.DataFrame:
     """Parse Minikel genetic associations to gene-disease pairs."""
     log.info(f"Loading associations from {associations_path}")
@@ -128,7 +137,7 @@ def parse_associations(
     log.info(f"After l2g_share >= {MIN_L2G_SHARE}: {len(assoc):,}")
 
     pairs = assoc.merge(
-        load_mesh_to_efo(mesh_to_efo_path),
+        load_mesh_to_efo(mesh_to_efo_path, efo),
         on="mesh_id",
         how="inner",
     )
@@ -182,6 +191,7 @@ def main():
 
     mesh_to_efo_path = args.mesh_to_efo or Path(mappings.get("mesh_to_efo", ""))
     out_dir = args.output_dir or output_dir / "minikel"
+    efo = efo_for_remap(mappings)
 
     parse_clinical_trials(
         pharmaprojects_path=args.pharmaprojects
@@ -189,11 +199,13 @@ def main():
         mesh_to_efo_path=mesh_to_efo_path,
         output_path=out_dir / "minikel_clinical_trials.parquet",
         indications_path=args.indications or _optional(ct_inputs.get("minikel_indications")),
+        efo=efo,
     )
     parse_associations(
         associations_path=args.associations or Path(ge_inputs.get("minikel_associations", "")),
         mesh_to_efo_path=mesh_to_efo_path,
         output_path=out_dir / "minikel_genetic_evidence.parquet",
+        efo=efo,
     )
 
 

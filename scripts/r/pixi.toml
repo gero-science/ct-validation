@@ -1,0 +1,20 @@
+[workspace]
+name = "efo-similarity"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "osx-64", "linux-64"]
+
+[dependencies]
+r-base = ">=4.4"
+r-optparse = "*"
+r-arrow = "*"
+r-ontologyindex = "*"
+# ontologySimilarity's own dependency and toolchain: conda-forge has no osx-arm64 build of it,
+# so `install` compiles it from CRAN into this environment
+r-rcpp = "*"
+cxx-compiler = "*"
+make = "*"
+
+[tasks]
+install = { cmd = "Rscript -e 'if (!requireNamespace(\"ontologySimilarity\", quietly = TRUE)) install.packages(\"ontologySimilarity\", repos = \"https://cloud.r-project.org\", type = \"source\")'" }
+# From the repo root: pixi run --manifest-path scripts/r/pixi.toml similarity -- --efo-path ...
+similarity = { cmd = "Rscript scripts/r/create_efo_similarity_matrix.R", cwd = "../..", depends-on = ["install"] }

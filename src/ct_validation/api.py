@@ -35,11 +35,14 @@ class MissingOngoingWarning(UserWarning):
 
 
 class UnmatchableDiseaseWarning(UserWarning):
-    """Raised when inputs carry efo_ids absent from similarity_lookup.
+    """Raised when inputs carry efo_ids that the similarity lookup does not contain.
 
-    Matching joins every disease through the lookup, so such ids can never be matched;
-    clinical-trial pairs carrying one are left out of both groups. Its own class so callers
-    can silence exactly this, rather than every UserWarning their program emits.
+    Matching joins through the lookup, diagonal included, so such an id can never match:
+    clinical-trial pairs carrying one are left out of both groups, and a target row with one
+    supports nothing. The causes are a source coded against a different EFO release than the
+    lookup (see `efo_remap_obsolete` in configs/parsing.yaml), and terms of ontologies EFO does
+    not import, which reach the sources through cross-references. Its own class so callers can
+    silence exactly this, rather than every UserWarning their program emits.
     """
 
 
@@ -232,6 +235,44 @@ def _drop_unmatchable_diseases(
     return ct[~unmatchable]
 
 
+def _warn_unmatchable(
+    con: duckdb.DuckDBPyConnection,
+    inputs: dict[str, _DataInput],
+    similarity_lookup: _DataInput,
+) -> None:
+    """Issue an UnmatchableDiseaseWarning per evidence input with efo_ids absent from the lookup."""
+    _setup_source(con, "unmatchable_sim", similarity_lookup)
+    con.execute(
+        "CREATE OR REPLACE TEMP TABLE unmatchable_ids AS "
+        "SELECT DISTINCT efo_id_1 AS efo_id FROM unmatchable_sim",
+    )
+    for i, (name, data) in enumerate(inputs.items()):
+        view = f"unmatchable_input_{i}"
+        _setup_source(con, view, data)
+        # sql
+        n, missing, examples = con.execute(
+            f"""
+            SELECT count(*),
+                   count(*) FILTER (WHERE s.efo_id IS NULL),
+                   list(DISTINCT d.efo_id ORDER BY d.efo_id) FILTER (WHERE s.efo_id IS NULL)[:3]
+            FROM {view} d
+            LEFT JOIN unmatchable_ids s ON d.efo_id = s.efo_id
+            WHERE d.efo_id IS NOT NULL
+            """,
+        ).fetchone()
+        if missing:
+            warnings.warn(
+                f"{name}: {missing:,} of {n:,} rows ({100 * missing / n:.1f}%) have an efo_id "
+                f"absent from similarity_lookup (e.g. {', '.join(examples)}), so they can never "
+                "match: terms of another EFO release, or of an ontology EFO does not import. "
+                "Silence this with "
+                "warnings.filterwarnings('ignore', category=UnmatchableDiseaseWarning).",
+                UnmatchableDiseaseWarning,
+                stacklevel=3,
+            )
+    con.execute("DROP TABLE unmatchable_ids")
+
+
 def _prepare_clinical_trials(
     ct: pd.DataFrame,
     target_pairs: set[tuple[str, str]],
@@ -408,6 +449,17 @@ def validate(
     con = duckdb.connect()
 
     ct_all = _drop_unmatchable_diseases(ct_all, p.similarity_lookup, con)
+
+    if p.similarity_lookup is not None:
+        # Clinical trials are covered by _drop_unmatchable_diseases
+        inputs: dict[str, _DataInput] = {}
+        if p.baseline_evidence is not None:
+            inputs["baseline_evidence"] = p.baseline_evidence
+        if batch:
+            inputs |= {f"targets[{i}]": t for i, t in enumerate(p.targets_list)}
+        else:
+            inputs["targets"] = p.targets_list[0]
+        _warn_unmatchable(con, inputs, p.similarity_lookup)
 
     # Match baseline once (shared across all target sets)
     baseline_pairs: set[tuple[str, str]] = set()

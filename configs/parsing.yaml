@@ -46,6 +46,8 @@ clinical_trials:
 # === SHARED MAPPINGS ===
 mappings:
     efo_ontology: "data/mappings/efo_v3.84.0.obo"
+    # false reproduces the paper's parsed data
+    efo_remap_obsolete: true
     mesh_to_efo: "data/mappings/mesh_to_efo.tsv"
     mondo_orphanet_hp_to_efo: "data/mappings/mondo_orphanet_hp_to_efo.tsv"
     gene_universe: "data/mappings/protein_coding_genes.txt"
