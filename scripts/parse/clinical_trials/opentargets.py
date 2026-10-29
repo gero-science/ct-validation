@@ -225,9 +225,14 @@ def parse_clinical_reports(clinical_report_path: Path, drug_molecule_path: Path)
     only when interventional; labels, agencies and curated resources carry no study type.
     `type` is not read: it holds the report's origin up to 26.06 and INDICATION or SAFETY
     from 26.09, and safety reports name no disease in either, so the unnest drops them.
+    Reports with no trial status are concluded at approval or withdrawal, or when
+    `phaseFromSource` says discontinued; otherwise their phase is left open.
     """
     phase_cases = " ".join(f"WHEN '{s}' THEN {p}" for s, p in CLINICAL_STAGE_PHASE.items())
     excluded = ", ".join(f"'{qc}'" for qc in sorted(EXCLUDED_QUALITY_CONTROLS))
+    concluded_stages = ", ".join(
+        f"'{s}'" for s in sorted(trial_status.OPENTARGETS_REPORT_CONCLUDED_STAGES)
+    )
     with duckdb.connect() as con:
         result = con.sql(
             # sql
@@ -238,6 +243,11 @@ def parse_clinical_reports(clinical_report_path: Path, drug_molecule_path: Path)
                        regexp_replace(disease.diseaseId, '_', ':') AS efo_id,
                        CASE clinicalStage {phase_cases} END AS phase,
                        trialOverallStatus AS status,
+                       CASE WHEN trialOverallStatus IS NULL THEN COALESCE(
+                           clinicalStage IN ({concluded_stages})
+                           OR phaseFromSource ILIKE '%discontinued%',
+                           FALSE
+                       ) END AS concluded_without_status,
                        source AS subsource
                 FROM read_parquet('{clinical_report_path / "*.parquet"}'),
                      unnest(drugs) AS u(drug),
@@ -245,18 +255,26 @@ def parse_clinical_reports(clinical_report_path: Path, drug_molecule_path: Path)
                 WHERE NOT list_has_any(COALESCE(qualityControls, []), [{excluded}])
                   AND COALESCE(trialStudyType, 'INTERVENTIONAL') = 'INTERVENTIONAL'
             )
-            SELECT DISTINCT r.efo_id, r.phase, r.status, m.drug_name, r.chembl_id,
-                   r.subsource, m.molecule_type
+            SELECT DISTINCT r.efo_id, r.phase, r.status, r.concluded_without_status,
+                   m.drug_name, r.chembl_id, r.subsource, m.molecule_type
             FROM records r
             LEFT JOIN ({_molecules_sql(drug_molecule_path)}) m USING (chembl_id)
             WHERE r.chembl_id IS NOT NULL AND r.efo_id IS NOT NULL AND r.phase IS NOT NULL
             """,
         ).df()
 
-    result = trial_status.apply(
-        result,
+    no_status = result["status"].isna()
+    registry = trial_status.apply(
+        result[~no_status],
         trial_status.OPENTARGETS_REPORT_CONCLUDED,
         trial_status.OPENTARGETS_REPORT_DROPPED,
+    )
+    unregistered = result[no_status]
+    unregistered = unregistered.assign(
+        is_concluded=unregistered["concluded_without_status"].astype(bool),
+    )
+    result = pd.concat([registry, unregistered], ignore_index=True).drop(
+        columns="concluded_without_status",
     )
 
     log.info(

@@ -68,6 +68,7 @@ def _report(**overrides) -> dict:
         "type": "INDICATION",
         "source": "ClinicalTrials.gov",
         "clinicalStage": "PHASE_2",
+        "phaseFromSource": "PHASE2",
         "trialOverallStatus": "COMPLETED",
         "trialStudyType": "INTERVENTIONAL",
         "qualityControls": None,
@@ -84,6 +85,7 @@ def _label() -> dict:
         id="label1",
         source="DailyMed",
         clinicalStage="APPROVAL",
+        phaseFromSource="approval",
         trialOverallStatus=None,
         trialStudyType=None,
     )
@@ -207,6 +209,34 @@ def test_trial_status_sets_is_concluded(tmp_path):
     result = _parse_reports(release).sort_values("phase")
 
     assert result[["phase", "is_concluded"]].values.tolist() == [[2, False], [4, True]]
+
+
+@pytest.mark.parametrize(
+    ("stage", "phase_from_source", "concluded"),
+    [
+        ("PHASE_2", "phase 2", False),
+        ("PHASE_2", "discontinued in phase 2", True),
+        ("WITHDRAWAL", "withdrawn", True),
+    ],
+)
+def test_status_less_reports_conclude_only_when_settled(
+    tmp_path,
+    stage,
+    phase_from_source,
+    concluded,
+):
+    """A curated 'phase 2' may still be running; a discontinuation or withdrawal is not."""
+    report = _report(
+        source="TTD",
+        clinicalStage=stage,
+        phaseFromSource=phase_from_source,
+        trialOverallStatus=None,
+        trialStudyType=None,
+    )
+
+    result = _parse_reports(_release(tmp_path, [report]))
+
+    assert result["is_concluded"].tolist() == [concluded]
 
 
 def test_one_record_per_drug_and_disease(tmp_path):

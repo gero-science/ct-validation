@@ -152,7 +152,9 @@ _Status._ Classified identically across vocabularies by `trial_status.py`: only 
 to establish that a phase was reached; `Completed`, `Terminated`, `Unknown status` and NULL all
 count as concluded. [CT.gov](https://clinicaltrials.gov/) applies `Unknown` only once a
 completion date has passed, so these went dark rather than stalling. `aggregate.py --unknown-ongoing` produces the sensitivity arm
-that censors them instead.
+that censors them instead. NULL is concluded in `known_drug`, where only approval records lack a
+status. From 26.06 curated resources lack one too so a status-less report concludes only at `APPROVAL` or
+`WITHDRAWAL`, or when `phaseFromSource` says discontinued, and is otherwise left open.
 
 **Two asymmetries between the status-bearing sources are known and deliberately not fixed at
 25.12.** Both are gone from 26.06, whose reports carry the study type and keep early phase I.
