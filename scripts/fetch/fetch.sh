@@ -50,13 +50,10 @@ fetch() {
     fi
 }
 
-# Enter the Open Targets release directory, `OT_RELEASE` (YY.MM or `latest`), and keep the
-# release's croissant.json there: its `version` records which release `latest` was.
+# Enter the Open Targets release directory, `OT_RELEASE` (YY.MM).
 enter_ot_release() {
     local d="${BASE_DIR}/data/sources/opentargets/${OT_RELEASE}"
     mkdir -p "$d" && cd "$d"
-    rm -f croissant.json
-    fetch "https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/${OT_RELEASE}/croissant.json"
 }
 
 # Mirror one Open Targets Platform dataset into the current directory. Spark-written
@@ -111,7 +108,7 @@ step_5() {
     [[ "$OT_RELEASE" != "26.03" ]] \
         || { echo "ERROR: OT 26.03 clinical data are not supported; use 25.12 or 26.06+" >&2; return 1; }
     enter_ot_release
-    # YY.MM releases compare as strings, and `latest` sorts after all of them
+    # YY.MM releases compare as strings
     if [[ "$OT_RELEASE" < "26.03" ]]; then
         fetch_ot known_drug
     else

@@ -36,7 +36,7 @@ Deliberately excluded:
 ## Other Open Targets releases
 
 `fetch.sh` downloads Open Targets 25.12, the release the paper used. To download another one,
-set `OT_RELEASE` to its version, or to `latest`:
+set `OT_RELEASE` to its version:
 
 ```bash
 OT_RELEASE=26.09 ./scripts/fetch/fetch.sh 3,5
@@ -44,9 +44,7 @@ OT_RELEASE=26.09 ./scripts/fetch/fetch.sh 3,5
 
 This writes to `data/sources/opentargets/26.09/`; point the Open Targets paths in
 `configs/parsing.yaml` there. From 26.06 the clinical trials entry takes four datasets instead
-of `known_drug`, listed in the config commented out. Each release directory also keeps
-`croissant.json`, Open Targets' own metadata, whose `version` field says which release `latest`
-was.
+of `known_drug`, listed in the config commented out.
 
 A release's disease ids follow its own EFO, while the similarity lookup in this data release is
 built from EFO 3.84, so ids EFO has replaced since then find no match. Every other source is
