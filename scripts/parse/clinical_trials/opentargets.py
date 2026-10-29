@@ -193,23 +193,40 @@ def parse_mechanisms(
     drug_molecule_path: Path,
     target_path: Path,
 ) -> pd.DataFrame:
-    """Extract gene-drug pairs from Open Targets drug_mechanism_of_action (26.06 onwards)."""
+    """Extract gene-drug pairs from Open Targets drug_mechanism_of_action (26.06 onwards).
+
+    `subsource` names the references behind the mechanism, not the indication's source.
+    `target_class` keeps the top level of ChEMBL's target classification, as known_drug did.
+    """
     with duckdb.connect() as con:
         result = con.sql(
             # sql
             f"""
             WITH links AS (
-                SELECT chembl_id, target_id, actionType AS action_type
+                SELECT chembl_id, target_id, actionType AS action_type,
+                       [r.source FOR r IN "references"] AS sources
                 FROM read_parquet('{drug_mechanism_of_action_path / "*.parquet"}'),
                      unnest(chemblIds) AS c(chembl_id),
                      unnest(targets) AS t(target_id)
             )
-            SELECT DISTINCT t.approvedSymbol AS gene, m.drug_name, l.chembl_id,
-                   m.molecule_type, l.action_type, m.trade_names, m.synonyms
+            SELECT t.approvedSymbol AS gene, m.drug_name, l.chembl_id,
+                   m.molecule_type, l.action_type,
+                   -- One row per link: several mechanism rows can cite it, and a symbol can
+                   -- name several Ensembl ids (IL3RA on X and Y), classified or not.
+                   NULLIF(array_to_string(
+                       list_sort(list_distinct(flatten(list(
+                           [c.label FOR c IN t.targetClass IF c.level = 'l1']
+                       )))), '|'
+                   ), '') AS target_class,
+                   m.trade_names, m.synonyms,
+                   NULLIF(array_to_string(
+                       list_sort(list_distinct(flatten(list(l.sources)))), '|'
+                   ), '') AS subsource
             FROM links l
             JOIN read_parquet('{target_path / "*.parquet"}') t ON t.id = l.target_id
             LEFT JOIN ({_molecules_sql(drug_molecule_path)}) m USING (chembl_id)
             WHERE t.approvedSymbol IS NOT NULL AND l.chembl_id IS NOT NULL
+            GROUP BY ALL
             """,
         ).df()
 
@@ -276,6 +293,7 @@ def parse_clinical_reports(clinical_report_path: Path, drug_molecule_path: Path)
     result = pd.concat([registry, unregistered], ignore_index=True).drop(
         columns="concluded_without_status",
     )
+    result["phase"] = result["phase"].astype("Int64")
 
     log.info(
         f"Drug-indication: {len(result):,} rows, {result['chembl_id'].nunique():,} drugs, "

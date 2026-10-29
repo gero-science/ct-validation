@@ -91,6 +91,18 @@ def _label() -> dict:
     )
 
 
+def _mechanism(**overrides) -> dict:
+    """A drug_mechanism_of_action row linking CHEMBL1 to ENSG01."""
+    row = {
+        "chemblIds": ["CHEMBL1"],
+        "targets": ["ENSG01"],
+        "actionType": "INHIBITOR",
+        "references": [{"source": "PubMed", "ids": ["1"], "urls": ["https://pubmed/1"]}],
+    }
+    row.update(overrides)
+    return row
+
+
 def _release(
     tmp_path: Path,
     reports: list[dict],
@@ -100,8 +112,7 @@ def _release(
     datasets = {
         "clinical_report": pd.DataFrame(reports),
         "drug_mechanism_of_action": pd.DataFrame(
-            mechanisms
-            or [{"chemblIds": ["CHEMBL1"], "targets": ["ENSG01"], "actionType": "INHIBITOR"}],
+            mechanisms or [_mechanism()],
         ),
         "drug_molecule": pd.DataFrame(
             [
@@ -114,7 +125,19 @@ def _release(
                 },
             ],
         ),
-        "target": pd.DataFrame({"id": ["ENSG01", "ENSG02"], "approvedSymbol": ["GENEA", "GENEB"]}),
+        "target": pd.DataFrame(
+            {
+                "id": ["ENSG01", "ENSG02"],
+                "approvedSymbol": ["GENEA", "GENEB"],
+                "targetClass": [
+                    [
+                        {"id": 1, "label": "Enzyme", "level": "l1"},
+                        {"id": 2, "label": "Kinase", "level": "l2"},
+                    ],
+                    [],
+                ],
+            },
+        ),
     }
     paths = {}
     for name, df in datasets.items():
@@ -265,13 +288,7 @@ def test_one_record_per_drug_and_disease(tmp_path):
 
 def test_mechanisms_resolve_targets_to_symbols(tmp_path):
     """Each drug-target link becomes a gene-drug row named from drug_molecule."""
-    mechanisms = [
-        {
-            "chemblIds": ["CHEMBL1"],
-            "targets": ["ENSG01", "ENSG02", "ENSG99"],
-            "actionType": "INHIBITOR",
-        },
-    ]
+    mechanisms = [_mechanism(targets=["ENSG01", "ENSG02", "ENSG99"])]
     release = _release(tmp_path, [_report()], mechanisms)
 
     result = opentargets.parse_mechanisms(
@@ -283,6 +300,28 @@ def test_mechanisms_resolve_targets_to_symbols(tmp_path):
     assert result[["gene", "drug_name", "action_type", "trade_names"]].values.tolist() == [
         ["GENEA", "DRUG1", "INHIBITOR", "Brand1"],
         ["GENEB", "DRUG1", "INHIBITOR", "Brand1"],
+    ]
+
+
+def test_mechanisms_carry_target_class_and_reference_sources(tmp_path):
+    """target_class is the top classification level; subsource the mechanism's references."""
+    references = [
+        {"source": "PubMed", "ids": ["1"], "urls": None},
+        {"source": "DailyMed", "ids": ["2"], "urls": None},
+        {"source": "PubMed", "ids": ["3"], "urls": None},
+    ]
+    mechanisms = [_mechanism(targets=["ENSG01", "ENSG02"], references=references)]
+    release = _release(tmp_path, [_report()], mechanisms)
+
+    result = opentargets.parse_mechanisms(
+        release["drug_mechanism_of_action_path"],
+        release["drug_molecule_path"],
+        release["target_path"],
+    ).sort_values("gene")
+
+    assert result[["gene", "target_class", "subsource"]].values.tolist() == [
+        ["GENEA", "Enzyme", "DailyMed|PubMed"],
+        ["GENEB", None, "DailyMed|PubMed"],
     ]
 
 
@@ -298,9 +337,21 @@ def test_datasets_replacing_known_drug_write_the_same_outputs(tmp_path):
     )
 
     assert gene_drug["gene"].tolist() == ["GENEA"]
+    assert gene_drug.columns.tolist() == [
+        "gene",
+        "drug_name",
+        "chembl_id",
+        "molecule_type",
+        "action_type",
+        "target_class",
+        "trade_names",
+        "synonyms",
+        "subsource",
+    ]
     assert drug_indication[["chembl_id", "efo_id", "phase"]].values.tolist() == [
         ["CHEMBL1", "MONDO:0004979", 2],
     ]
+    assert drug_indication["phase"].dtype == "Int64"
 
 
 @pytest.mark.parametrize(
