@@ -102,8 +102,11 @@ _Open Targets from 26.06._ `known_drug` was dropped from the Platform at 26.03. 
 `configs/parsing.yaml` in place of `opentargets_known_drug`. It applies the quality controls
 Open Targets uses to aggregate reports into its own `clinical_indication`: reports flagged
 `INDIRECT_PRIMARY_PURPOSE` or `PHASE_IV_NOT_APPROVED` are dropped, and `UNVALIDATED_INDICATION`
-is only a warning. Its drug–disease pairs reproduce `clinical_indication` exactly at 26.06
-(86,468) and 26.09 (86,451).
+is only a warning. Under those controls alone, its drug–disease pairs reproduce
+`clinical_indication` exactly at 26.06 (86,468) and 26.09 (86,451). The parser then keeps only
+interventional registry trials (84,102 and 84,273) and drops reports that establish no clinical
+phase (`IND`, `PRECLINICAL`, `UNKNOWN`) or whose trial was withdrawn, so it outputs 74,071 and
+74,325 pairs.
 
 26.03 is not supported, and `fetch.sh` refuses it at step 5: Open Targets then dropped
 `UNVALIDATED_INDICATION` reports from `clinical_indication`, a rule it reversed at 26.06, and its
