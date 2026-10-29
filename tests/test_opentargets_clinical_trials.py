@@ -180,6 +180,15 @@ def test_stages_without_a_clinical_phase_are_dropped(tmp_path, stage):
     assert _parse_reports(release).empty
 
 
+@pytest.mark.parametrize("stage", ["PHASE_5", None])
+def test_unclassified_stages_raise(tmp_path, stage):
+    """A stage in neither the phase map nor the dropped set must be classified first."""
+    release = _release(tmp_path, [_report(), _report(id="nct2", clinicalStage=stage)])
+
+    with pytest.raises(ValueError, match="unclassified clinical stage"):
+        _parse_reports(release)
+
+
 @pytest.mark.parametrize(
     ("flags", "kept"),
     [

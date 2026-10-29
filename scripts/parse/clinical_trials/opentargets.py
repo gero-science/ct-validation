@@ -31,8 +31,7 @@ from ct_validation.efo import EfoOntology, efo_for_remap, remap_efo_ids
 log = logging.getLogger(__name__)
 
 # Clinical stages from 26.06 on the internal 1-4 scale. Combined phases take their highest
-# component, as TrialPanorama's do, and a market withdrawal follows an approval. IND,
-# PRECLINICAL and UNKNOWN establish no clinical phase and are dropped.
+# component, as TrialPanorama's do, and a market withdrawal follows an approval.
 CLINICAL_STAGE_PHASE = {
     "EARLY_PHASE_1": 1,
     "PHASE_1": 1,
@@ -45,6 +44,7 @@ CLINICAL_STAGE_PHASE = {
     "APPROVAL": 4,
     "WITHDRAWAL": 4,
 }
+DROPPED_CLINICAL_STAGES = {"IND", "PRECLINICAL", "UNKNOWN"}
 
 # The quality controls that keep a report out of Open Targets' own `clinical_indication`.
 # UNVALIDATED_INDICATION is a warning there rather than a filter, and NO_DISEASE comes with
@@ -251,6 +251,14 @@ def parse_clinical_reports(clinical_report_path: Path, drug_molecule_path: Path)
         f"'{s}'" for s in sorted(trial_status.OPENTARGETS_REPORT_CONCLUDED_STAGES)
     )
     with duckdb.connect() as con:
+        stages = con.sql(
+            f"SELECT DISTINCT clinicalStage FROM read_parquet('{clinical_report_path / '*.parquet'}')",
+        ).fetchall()
+        known = CLINICAL_STAGE_PHASE.keys() | DROPPED_CLINICAL_STAGES
+        if unmapped := {s for (s,) in stages} - known:
+            msg = f"unclassified clinical stage: {sorted(map(str, unmapped))}"
+            raise ValueError(msg)
+
         result = con.sql(
             # sql
             f"""
