@@ -6,6 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Klim Kostiuk", email = "2601074@gmail.com" },
     { name = "Daniel Igumnov" },
+    { name = "Irene López Santiago" },
     { name = "Peter Fedichev" },
     { name = "Amir Feizi" },
 ]

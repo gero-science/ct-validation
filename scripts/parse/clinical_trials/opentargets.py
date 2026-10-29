@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
-"""Parse Open Targets known_drug data to standardized gene-drug and drug-indication parquets.
+"""Parse Open Targets clinical data to standardized gene-drug and drug-indication parquets.
 
-Reads:
+Reads, up to 25.12:
 - opentargets_known_drug: Open Targets known_drug parquet directory
+
+or, from 26.06, the datasets that replace it:
+- opentargets_clinical_report: drug-indication reports
+- opentargets_drug_mechanism_of_action: drug-target links
+- opentargets_drug_molecule: drug names and metadata
+- opentargets_target: target symbols
+
+26.03, the first release without `known_drug`, is not supported: it aggregated its reports
+under another rule.
 
 Outputs:
 - clinical_trials/opentargets_gene_drug.parquet
@@ -13,12 +22,34 @@ import argparse
 import logging
 from pathlib import Path
 
+import duckdb
 import pandas as pd
 import trial_status
 import yaml
 from ct_validation.efo import EfoOntology, efo_for_remap, remap_efo_ids
 
 log = logging.getLogger(__name__)
+
+# Clinical stages from 26.06 on the internal 1-4 scale. Combined phases take their highest
+# component, as TrialPanorama's do, and a market withdrawal follows an approval.
+CLINICAL_STAGE_PHASE = {
+    "EARLY_PHASE_1": 1,
+    "PHASE_1": 1,
+    "PHASE_1_2": 2,
+    "PHASE_2": 2,
+    "PHASE_2_3": 3,
+    "PHASE_3": 3,
+    "PREAPPROVAL": 4,
+    "PHASE_4": 4,
+    "APPROVAL": 4,
+    "WITHDRAWAL": 4,
+}
+DROPPED_CLINICAL_STAGES = {"IND", "PRECLINICAL", "UNKNOWN"}
+
+# The quality controls that keep a report out of Open Targets' own `clinical_indication`.
+# UNVALIDATED_INDICATION is a warning there rather than a filter, and NO_DISEASE comes with
+# an unmapped disease, which is dropped anyway.
+EXCLUDED_QUALITY_CONTROLS = {"INDIRECT_PRIMARY_PURPOSE", "PHASE_IV_NOT_APPROVED"}
 
 
 def _join_list(val) -> str | None:
@@ -145,26 +176,185 @@ def parse_drug_indication(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _molecules_sql(drug_molecule_path: Path) -> str:
+    """SQL for drug names and metadata from Open Targets drug_molecule, keyed by ChEMBL id."""
+    return f"""
+        SELECT id AS chembl_id,
+               name AS drug_name,
+               drugType AS molecule_type,
+               NULLIF(array_to_string([t.label FOR t IN tradeNames], '|'), '') AS trade_names,
+               NULLIF(array_to_string([s.label FOR s IN synonyms], '|'), '') AS synonyms
+        FROM read_parquet('{drug_molecule_path / "*.parquet"}')
+    """
+
+
+def parse_mechanisms(
+    drug_mechanism_of_action_path: Path,
+    drug_molecule_path: Path,
+    target_path: Path,
+) -> pd.DataFrame:
+    """Extract gene-drug pairs from Open Targets drug_mechanism_of_action (26.06 onwards).
+
+    `subsource` names the references behind the mechanism, not the indication's source.
+    `target_class` keeps the top level of ChEMBL's target classification, as known_drug did.
+    """
+    with duckdb.connect() as con:
+        result = con.sql(
+            # sql
+            f"""
+            WITH links AS (
+                SELECT chembl_id, target_id, actionType AS action_type,
+                       [r.source FOR r IN "references"] AS sources
+                FROM read_parquet('{drug_mechanism_of_action_path / "*.parquet"}'),
+                     unnest(chemblIds) AS c(chembl_id),
+                     unnest(targets) AS t(target_id)
+            )
+            SELECT t.approvedSymbol AS gene, m.drug_name, l.chembl_id,
+                   m.molecule_type, l.action_type,
+                   -- One row per link: several mechanism rows can cite it, and a symbol can
+                   -- name several Ensembl ids (IL3RA on X and Y), classified or not.
+                   NULLIF(array_to_string(
+                       list_sort(list_distinct(flatten(list(
+                           [c.label FOR c IN t.targetClass IF c.level = 'l1']
+                       )))), '|'
+                   ), '') AS target_class,
+                   m.trade_names, m.synonyms,
+                   NULLIF(array_to_string(
+                       list_sort(list_distinct(flatten(list(l.sources)))), '|'
+                   ), '') AS subsource
+            FROM links l
+            JOIN read_parquet('{target_path / "*.parquet"}') t ON t.id = l.target_id
+            LEFT JOIN ({_molecules_sql(drug_molecule_path)}) m USING (chembl_id)
+            WHERE t.approvedSymbol IS NOT NULL AND l.chembl_id IS NOT NULL
+            GROUP BY ALL
+            """,
+        ).df()
+
+    log.info(f"Gene-drug: {len(result):,} rows, {result['gene'].nunique():,} genes")
+    return result
+
+
+def parse_clinical_reports(clinical_report_path: Path, drug_molecule_path: Path) -> pd.DataFrame:
+    """Extract drug-indication records from Open Targets clinical_report (26.06 onwards).
+
+    One record per report, drug and disease, under the quality controls Open Targets
+    applies when it aggregates them into `clinical_indication`. Registry trials are kept
+    only when interventional; labels, agencies and curated resources carry no study type.
+    `type` is not read: it holds the report's origin up to 26.06 and INDICATION or SAFETY
+    from 26.09, and safety reports name no disease in either, so the unnest drops them.
+    Reports with no trial status are concluded at approval or withdrawal, or when
+    `phaseFromSource` says discontinued; otherwise their phase is left open.
+    """
+    phase_cases = " ".join(f"WHEN '{s}' THEN {p}" for s, p in CLINICAL_STAGE_PHASE.items())
+    excluded = ", ".join(f"'{qc}'" for qc in sorted(EXCLUDED_QUALITY_CONTROLS))
+    concluded_stages = ", ".join(
+        f"'{s}'" for s in sorted(trial_status.OPENTARGETS_REPORT_CONCLUDED_STAGES)
+    )
+    with duckdb.connect() as con:
+        stages = con.sql(
+            f"SELECT DISTINCT clinicalStage FROM read_parquet('{clinical_report_path / '*.parquet'}')",
+        ).fetchall()
+        known = CLINICAL_STAGE_PHASE.keys() | DROPPED_CLINICAL_STAGES
+        if unmapped := {s for (s,) in stages} - known:
+            msg = f"unclassified clinical stage: {sorted(map(str, unmapped))}"
+            raise ValueError(msg)
+
+        result = con.sql(
+            # sql
+            f"""
+            WITH records AS (
+                SELECT drug.drugId AS chembl_id,
+                       -- First underscore only, matching the GE side these pairs join against.
+                       regexp_replace(disease.diseaseId, '_', ':') AS efo_id,
+                       CASE clinicalStage {phase_cases} END AS phase,
+                       trialOverallStatus AS status,
+                       CASE WHEN trialOverallStatus IS NULL THEN COALESCE(
+                           clinicalStage IN ({concluded_stages})
+                           OR phaseFromSource ILIKE '%discontinued%',
+                           FALSE
+                       ) END AS concluded_without_status,
+                       source AS subsource
+                FROM read_parquet('{clinical_report_path / "*.parquet"}'),
+                     unnest(drugs) AS u(drug),
+                     unnest(diseases) AS v(disease)
+                WHERE NOT list_has_any(COALESCE(qualityControls, []), [{excluded}])
+                  AND COALESCE(trialStudyType, 'INTERVENTIONAL') = 'INTERVENTIONAL'
+            )
+            SELECT DISTINCT r.efo_id, r.phase, r.status, r.concluded_without_status,
+                   m.drug_name, r.chembl_id, r.subsource, m.molecule_type
+            FROM records r
+            LEFT JOIN ({_molecules_sql(drug_molecule_path)}) m USING (chembl_id)
+            WHERE r.chembl_id IS NOT NULL AND r.efo_id IS NOT NULL AND r.phase IS NOT NULL
+            """,
+        ).df()
+
+    no_status = result["status"].isna()
+    registry = trial_status.apply(
+        result[~no_status],
+        trial_status.OPENTARGETS_REPORT_CONCLUDED,
+        trial_status.OPENTARGETS_REPORT_DROPPED,
+    )
+    unregistered = result[no_status]
+    unregistered = unregistered.assign(
+        is_concluded=unregistered["concluded_without_status"].astype(bool),
+    )
+    result = pd.concat([registry, unregistered], ignore_index=True).drop(
+        columns="concluded_without_status",
+    )
+    result["phase"] = result["phase"].astype("Int64")
+
+    log.info(
+        f"Drug-indication: {len(result):,} rows, {result['chembl_id'].nunique():,} drugs, "
+        f"{result['efo_id'].nunique():,} diseases",
+    )
+    return result
+
+
 def parse_opentargets(
-    known_drug_path: Path,
     gene_drug_output: Path,
     drug_indication_output: Path,
+    known_drug_path: Path | None = None,
+    clinical_report_path: Path | None = None,
+    drug_mechanism_of_action_path: Path | None = None,
+    drug_molecule_path: Path | None = None,
+    target_path: Path | None = None,
     efo: EfoOntology | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Parse Open Targets known_drug to standardized outputs."""
-    log.info(f"Loading Open Targets known_drug from {known_drug_path}")
-    df = pd.read_parquet(known_drug_path)
-    log.info(f"Loaded {len(df):,} rows")
+    """Parse Open Targets to standardized outputs.
+
+    Takes either `known_drug_path` (up to 25.12) or the four datasets that replace it from
+    26.06: `clinical_report`, `drug_mechanism_of_action`, `drug_molecule` and `target`.
+    """
+    replacements = [
+        clinical_report_path,
+        drug_mechanism_of_action_path,
+        drug_molecule_path,
+        target_path,
+    ]
+    if known_drug_path is not None and not any(replacements):
+        log.info(f"Loading Open Targets known_drug from {known_drug_path}")
+        df = pd.read_parquet(known_drug_path)
+        gene_drug = parse_gene_drug(df)
+        drug_indication = parse_drug_indication(df)
+    elif known_drug_path is None and all(replacements):
+        log.info(f"Loading Open Targets clinical reports from {clinical_report_path}")
+        gene_drug = parse_mechanisms(drug_mechanism_of_action_path, drug_molecule_path, target_path)
+        drug_indication = parse_clinical_reports(clinical_report_path, drug_molecule_path)
+    else:
+        msg = (
+            "Pass either known_drug (up to 25.12) or all of clinical_report, "
+            "drug_mechanism_of_action, drug_molecule and target (26.06 onwards), not both"
+        )
+        raise ValueError(msg)
 
     gene_drug_output.parent.mkdir(parents=True, exist_ok=True)
     drug_indication_output.parent.mkdir(parents=True, exist_ok=True)
-
-    gene_drug = parse_gene_drug(df)
     gene_drug.to_parquet(gene_drug_output, index=False)
 
-    drug_indication = parse_drug_indication(df)
     if efo is not None:
-        drug_indication = remap_efo_ids(drug_indication, efo, label_column="efo_term")
+        # clinical_report names diseases by id only; known_drug also carries efo_term.
+        label_column = "efo_term" if "efo_term" in drug_indication else None
+        drug_indication = remap_efo_ids(drug_indication, efo, label_column=label_column)
     drug_indication.to_parquet(drug_indication_output, index=False)
 
     log.info(f"Saved to {gene_drug_output} and {drug_indication_output}")
@@ -178,6 +368,14 @@ def main():
     )
     parser.add_argument("--config", type=Path, help="Config YAML")
     parser.add_argument("--known-drug", type=Path, help="Open Targets known_drug parquet dir")
+    parser.add_argument("--clinical-report", type=Path, help="clinical_report dir (26.06+)")
+    parser.add_argument(
+        "--drug-mechanism-of-action",
+        type=Path,
+        help="drug_mechanism_of_action dir (26.06+)",
+    )
+    parser.add_argument("--drug-molecule", type=Path, help="drug_molecule dir (26.06+)")
+    parser.add_argument("--target", type=Path, help="target dir (26.06+)")
     parser.add_argument("--output-dir", type=Path, help="Output directory")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
@@ -199,11 +397,21 @@ def main():
     else:
         ct_inputs, mappings, output_dir = {}, {}, Path()
 
+    def dataset(arg: Path | None, key: str) -> Path | None:
+        return arg or (Path(ct_inputs[key]) if ct_inputs.get(key) else None)
+
     ct_out = args.output_dir or output_dir / "clinical_trials"
     parse_opentargets(
-        known_drug_path=args.known_drug or Path(ct_inputs.get("opentargets_known_drug", "")),
         gene_drug_output=ct_out / "opentargets_gene_drug.parquet",
         drug_indication_output=ct_out / "opentargets_drug_indication.parquet",
+        known_drug_path=dataset(args.known_drug, "opentargets_known_drug"),
+        clinical_report_path=dataset(args.clinical_report, "opentargets_clinical_report"),
+        drug_mechanism_of_action_path=dataset(
+            args.drug_mechanism_of_action,
+            "opentargets_drug_mechanism_of_action",
+        ),
+        drug_molecule_path=dataset(args.drug_molecule, "opentargets_drug_molecule"),
+        target_path=dataset(args.target, "opentargets_target"),
         efo=efo_for_remap(mappings),
     )
 

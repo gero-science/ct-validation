@@ -44,6 +44,15 @@ TRIALPANORAMA_CONCLUDED = {
 }
 TRIALPANORAMA_DROPPED = {"WITHDRAWN"}
 
+# From 26.03 Open Targets carries ClinicalTrials.gov's own status enum, the vocabulary
+# TrialPanorama uses; reports from labels, agencies and curated resources carry none.
+OPENTARGETS_REPORT_CONCLUDED = TRIALPANORAMA_CONCLUDED
+OPENTARGETS_REPORT_DROPPED = TRIALPANORAMA_DROPPED
+# Not every status-less report is an approval: TTD's "phase 2" is the furthest phase it has
+# recorded, not a finished trial. Those conclude only at these stages, or when the source
+# phase says the programme was discontinued.
+OPENTARGETS_REPORT_CONCLUDED_STAGES = {"APPROVAL", "WITHDRAWAL"}
+
 # ClinicalTrials.gov's Unknown label, in both source vocabularies. Read as concluded
 # above; aggregate.py's --unknown-ongoing is the sensitivity arm for that choice.
 UNKNOWN_STATUSES = {"Unknown status", "UNKNOWN"}
