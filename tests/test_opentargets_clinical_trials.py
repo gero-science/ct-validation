@@ -359,10 +359,11 @@ def test_datasets_replacing_known_drug_write_the_same_outputs(tmp_path):
     [
         ["clinical_report_path", "drug_molecule_path"],
         [],
+        ["known_drug_path", "clinical_report_path"],
     ],
 )
 def test_known_drug_or_all_four_replacements_are_required(tmp_path, datasets):
-    """Without known_drug, all four of its replacements are needed."""
+    """Exactly one of known_drug or all four of its replacements is needed."""
     with pytest.raises(ValueError, match="known_drug"):
         opentargets.parse_opentargets(
             tmp_path / "gene_drug.parquet",

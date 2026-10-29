@@ -317,24 +317,25 @@ def parse_opentargets(
     Takes either `known_drug_path` (up to 25.12) or the four datasets that replace it from
     26.06: `clinical_report`, `drug_mechanism_of_action`, `drug_molecule` and `target`.
     """
-    if known_drug_path is not None:
+    replacements = [
+        clinical_report_path,
+        drug_mechanism_of_action_path,
+        drug_molecule_path,
+        target_path,
+    ]
+    if known_drug_path is not None and not any(replacements):
         log.info(f"Loading Open Targets known_drug from {known_drug_path}")
         df = pd.read_parquet(known_drug_path)
         gene_drug = parse_gene_drug(df)
         drug_indication = parse_drug_indication(df)
-    elif (
-        clinical_report_path is not None
-        and drug_mechanism_of_action_path is not None
-        and drug_molecule_path is not None
-        and target_path is not None
-    ):
+    elif known_drug_path is None and all(replacements):
         log.info(f"Loading Open Targets clinical reports from {clinical_report_path}")
         gene_drug = parse_mechanisms(drug_mechanism_of_action_path, drug_molecule_path, target_path)
         drug_indication = parse_clinical_reports(clinical_report_path, drug_molecule_path)
     else:
         msg = (
             "Pass either known_drug (up to 25.12) or all of clinical_report, "
-            "drug_mechanism_of_action, drug_molecule and target (26.06 onwards)"
+            "drug_mechanism_of_action, drug_molecule and target (26.06 onwards), not both"
         )
         raise ValueError(msg)
 
