@@ -41,9 +41,9 @@ often** as unsupported ones (95% CI 1.45–1.49).
 ## Install
 
 ```bash
-pip install ct-validation          # Python 3.11+
-pip install ct-validation[plot]    # + forest plots
-pip install ct-validation[mcp]     # + MCP server for agent workflows
+uv add ct-validation           # Python 3.11+
+uv add "ct-validation[plot]"   # + forest plots
+uv add "ct-validation[mcp]"    # + MCP server for agent workflows
 ```
 
 ## Applications
@@ -351,8 +351,7 @@ git checkout v0.4.3
 curl -LO https://zenodo.org/records/22901451/files/ct-validation-data.tar.gz
 tar xzf ct-validation-data.tar.gz
 cd notebooks
-pip install -r requirements.txt   # pinned env: Jupyter + plotting theme + editable install
-python benchmark.py
+uv run --with-requirements requirements.txt python benchmark.py   # v0.4.3's pinned env
 ```
 
 The Zenodo code archive can stand in for the git checkout. Later releases may give different
@@ -385,6 +384,12 @@ CI runs on push/PR to `main` (Python 3.11–3.13, `ruff`, `pytest`):
 uv sync --extra mcp --extra parse
 uv run ruff check src tests scripts
 uv run pytest tests/ -v
+```
+
+The benchmark notebook (`notebooks/benchmark.py`, paired with `benchmark.ipynb` by jupytext):
+
+```bash
+uv run --group notebook jupyter lab notebooks/
 ```
 
 </details>
