@@ -14,15 +14,15 @@ everything `notebooks/benchmark.py` reads, so the benchmark runs without re-fetc
 | `data/clinical_trials/`           | the five parsed sources, `aggregated/`, and `aggregated_unknown_ongoing/`                     |
 | `data/minikel/`                   | the three processed parquets                                                                  |
 | `data/mappings/`                  | similarity lookup at 0.5, gene universe, `efo.obo`, `d2023.bin`, and the crosswalks           |
-| `data/sources/opentargets/25.12/` | `target/`, `known_drug/`, and the three association tables                                    |
+| `data/sources/opentargets/26.09/` | `target/` and the three association tables                                                    |
 | `data/sources/dgidb/`             | `drugs.tsv.gz`                                                                                |
 | `data/sources/genebass/`          | `gene_associations_p1e-7.parquet`, the Hail-preprocessed intermediate                         |
 
 The Open Targets and DGIdb entries under `sources/` are verbatim upstream releases rather than
-our derivatives; they ship because the notebook opens them directly — `known_drug/` for the Open
-Targets trial arm, the association tables for the per-subsource breakdown and the prior-art
-comparison. The Genebass file is ours: the output of `genebass_preprocess.py`, included so the
-parsing step can be re-run without a GCP account or Hail.
+our derivatives; they ship because the notebook opens them directly — the association tables
+for the per-subsource breakdown and the prior-art comparison. The Genebass file is ours: the
+output of `genebass_preprocess.py`, included so the parsing step can be re-run without a GCP
+account or Hail.
 
 Deliberately excluded:
 
@@ -33,23 +33,31 @@ Deliberately excluded:
   these themselves; take them from [their repository](https://github.com/ericminikel/genetic_support/).
 - **Everything else under `data/sources/`.** Versioned upstream releases; `fetch.sh` retrieves them.
 
-## Other Open Targets releases
+## Open Targets and EFO releases
 
-`fetch.sh` downloads Open Targets 25.12, the release the paper used. To download another one,
-set `OT_RELEASE` to its version:
+By default `fetch.sh` downloads Open Targets 26.09 and EFO 3.93, the release Open Targets built
+26.09 with, and the configs read them: `parsing.yaml` the four 26.09 clinical datasets and
+`efo_v3.93.0.obo`, and `default.yaml` the EFO 3.93 similarity lookup, which
+`create_efo_similarity_matrix.R` builds by default (see [Similarity lookup](#similarity-lookup)).
+`OT_RELEASE` (YY.MM) and `EFO_VERSION` select others; `EFO_VERSION=ot` reads the EFO release
+`OT_RELEASE` was built with from its `manifest.json`, which records it from 25.12. Releases in
+Open Targets' public S3 bucket (from 25.12) come from it, as it serves the same files several
+times faster than the FTP; any release the bucket does not list comes from the FTP.
+
+A release's disease ids follow its own EFO, so the lookup must be built from that EFO: ids EFO
+has replaced since find no match. The paper used Open Targets 25.12, EFO 3.84 and no remapping.
+Its results reproduce from the archived code and data (see
+[Reproducing the paper](README.md#reproducing-the-paper)); to parse its sources again, fetch them:
 
 ```bash
-OT_RELEASE=26.09 ./scripts/fetch/fetch.sh 3,5
+OT_RELEASE=25.12 EFO_VERSION=3.84.0 ./scripts/fetch/fetch.sh 3,5,10
 ```
 
-This writes to `data/sources/opentargets/26.09/`; point the Open Targets paths in
-`configs/parsing.yaml` there. From 26.06 the clinical trials entry takes four datasets instead
-of `known_drug`, listed in the config commented out.
-
-A release's disease ids follow its own EFO, while the similarity lookup in this data release is
-built from EFO 3.84, so ids EFO has replaced since then find no match. Every other source is
-pinned to the version listed below. `notebooks/benchmark.py` reads the data release directly,
-so it reproduces the paper without fetching anything.
+then, in `configs/parsing.yaml`, point the Open Targets paths at `25.12`, use
+`opentargets_known_drug` (commented there) in place of the four clinical datasets, and set
+`efo_ontology` to `efo_v3.84.0.obo` and `efo_remap_obsolete` to false; in `configs/default.yaml`,
+use the data release's `efo_similarity_lookup_0.5.parquet`. Every other source is pinned to the
+version listed below.
 
 ## Genetic evidence
 
@@ -57,8 +65,8 @@ so it reproduces the paper without fetching anything.
 | ------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | GWAS Catalog                                | Release 2026-04-07, header v1.0.2 | `gwas-catalog-associations_ontology-annotated-full.zip`                       | https://ftp.ebi.ac.uk/pub/databases/gwas/releases/2026/04/07/          | `fetch.sh`                                                                                                                                                                              | None named. [EMBL-EBI terms](https://www.ebi.ac.uk/about/terms-of-use) add no restrictions beyond the data owners'               |
 | ClinVar                                     | 2026-04-04                        | `clinvar.vcf.gz`                                                              | https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/archive_2.0/2026/  | `fetch.sh`                                                                                                                                                                              | None named. US public domain; NCBI places no restrictions on distribution, though submitters may hold rights                     |
-| Open Targets Platform                       | 25.12                             | `association_by_datasource_direct/`, `association_overall_direct/`, `target/` | https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/ | `fetch.sh`                                                                                                                                                                              | CC0 1.0                                                                                                                          |
-| Open Targets Platform (ontology-propagated) | 25.12                             | `association_by_datasource_indirect/`                                         | https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/ | `fetch.sh`                                                                                                                                                                              | CC0 1.0                                                                                                                          |
+| Open Targets Platform                       | 26.09 (paper: 25.12)              | `association_by_datasource_direct/`, `association_overall_direct/`, `target/` | https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/26.09/output/ | `fetch.sh` (S3, else FTP)                                                                                                                                                               | CC0 1.0                                                                                                                          |
+| Open Targets Platform (ontology-propagated) | 26.09 (paper: 25.12)              | `association_by_datasource_indirect/`                                         | https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/26.09/output/ | `fetch.sh` (S3, else FTP)                                                                                                                                                               | CC0 1.0                                                                                                                          |
 | Genebass                                    | 500k                              | `results.mt`                                                                  | `gs://ukbb-exome-public/500k/results/results.mt`                       | Manual (GCP account); preprocess with `scripts/fetch/genebass_preprocess.py` (Hail + Java 11). The preprocessed output is in the data release, so neither is needed to re-run the parse | **None stated.** Public bulk downloads of UK Biobank-derived summary statistics; GCP/Hail is an access burden, not a restriction |
 
 Only Open Targets grants a licence. NCBI and EMBL-EBI state that _they_ add no restrictions of
@@ -91,7 +99,7 @@ better disease match.
 | Source                | Version      | Files                                                                                           | Download                                                                  | Acquisition                        |
 | --------------------- | ------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------------- |
 | ChEMBL                | 36           | `chembl_36.db` (SQLite)                                                                         | https://ftp.ebi.ac.uk/pub/databases/chembl/ChEMBLdb/releases/chembl_36/   | `fetch.sh` (via `chembl_fetch.sh`) |
-| Open Targets Platform | 25.12        | `known_drug/`                                                                                   | https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/25.12/output/    | `fetch.sh`                         |
+| Open Targets Platform | 26.09        | `clinical_report/`, `drug_mechanism_of_action/`, `drug_molecule/`; paper (25.12): `known_drug/` | https://ftp.ebi.ac.uk/pub/databases/opentargets/platform/26.09/output/    | `fetch.sh` (S3, else FTP)          |
 | STITCH / STRING       | v5.0 / v12.0 | `9606.actions.v5.0.tsv.gz`, `chemical_sources.v5.0.tsv.gz`, `9606.protein.aliases.v12.0.txt.gz` | http://stitch.embl.de/cgi/download.pl, https://string-db.org/cgi/download | `fetch.sh`                         |
 | DGIdb                 | 2024-Dec     | `interactions.tsv`, `drugs.tsv`                                                                 | https://dgidb.org/downloads                                               | `fetch.sh`                         |
 | TrialPanorama         | 2025-08-22   | Full dataset                                                                                    | https://huggingface.co/datasets/TrialPanorama/TrialPanorama-database      | `fetch.sh` (via `hf download`)     |
@@ -173,11 +181,11 @@ never lower it out of a higher one.
 
 | Resource                          | Version            | Files                                 | Download                                                                                             | Acquisition                                                                                                                                         |
 | --------------------------------- | ------------------ | ------------------------------------- | ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| EFO                               | v3.84.0            | `efo_v3.84.0.obo`                     | https://github.com/EBISPOT/efo/releases                                                              | `fetch.sh` (`EFO_VERSION`)                                                                                                                          |
+| EFO                               | v3.93.0 (paper: v3.84.0) | `efo_v3.93.0.obo`               | https://github.com/EBISPOT/efo/releases                                                              | `fetch.sh` (`EFO_VERSION`)                                                                                                                          |
 | MeSH descriptors                  | 2023               | `d2023.bin`                           | https://nlmpubs.nlm.nih.gov/projects/mesh/2023/asciimesh/                                            | Data release; read only by the benchmark notebook (oncology flag, tree C04)                                                                         |
 | OxO cross-references              | OxO 1, retrieved on or before 2026-05-08 | MeSH-to-EFO, MONDO/Orphanet/HP-to-EFO | https://www.ebi.ac.uk/spot/oxo                                                                       | Data release, which is the reference copy: a dated snapshot of a live service, so a later query is not guaranteed to reproduce it                    |
 | Pan-UK Biobank phenotype manifest | —                  | `ukb_phenotype_manifest.tsv`          | [Google Sheets](https://docs.google.com/spreadsheets/d/1AeeADtT0U1AukliiNyiVzVRdLYPkTbruQSk38DeutU8) | Data release                                                                                                                                        |
-| Protein-coding genes              | Open Targets 25.12 | `protein_coding_genes.txt`            | —                                                                                                    | `python scripts/parse/gene_universe.py` (`target.biotype == protein_coding`; 20,097 symbols, 634 of them Ensembl IDs for genes with no HGNC symbol) |
+| Protein-coding genes              | Open Targets 26.09 | `protein_coding_genes.txt`            | —                                                                                                    | `python scripts/parse/gene_universe.py` (`target.biotype == protein_coding`; 20,080 symbols, 624 of them Ensembl IDs for genes with no HGNC symbol; 20,097 and 634 at 25.12, the paper's) |
 
 ### EFO releases and obsolete terms
 
@@ -192,9 +200,10 @@ parser rewrites obsolete ids to their live successor** in `mappings.efo_ontology
 therefore collapse into one pair with the right `max_phase` and `is_ongoing`. It is on
 by default; the paper's parsed data were built with it off.
 
-Against EFO 3.90 this leaves no obsolete ids in any source. What it cannot fix is terms EFO does
-not import: about 9% of TrialPanorama and Minikel CT records. Neither does it make all evidence
-matchable: the R script leaves the OBA (measurements) and PR (proteins) branches out of the lookup
+Against EFO 3.93, the release Open Targets 26.09 was built with, this leaves no obsolete ids in
+any source. What it cannot fix is terms EFO does not import: about 8–9% of TrialPanorama and
+Minikel CT records, nearly all Orphanet ids from the MeSH crosswalk. Neither does it make all
+evidence matchable: the R script leaves the OBA (measurements) and PR (proteins) branches out of the lookup
 by design (`--exclude-prefixes`), in the paper as now, and OBA terms make up 14–24% of GWAS
 Catalog, Genebass and Open Targets genetic evidence records.
 
@@ -210,14 +219,13 @@ is pinned in `scripts/r/pixi.toml` (install [pixi](https://pixi.sh) first; on Ap
 `ontologySimilarity` is compiled from CRAN on the first run). From the repository root:
 
 ```bash
-pixi run --manifest-path scripts/r/pixi.toml similarity -- \
-    --efo-path data/mappings/efo_v3.90.0.obo \
-    --output data/mappings/efo_full_similarity_matrix_v3.90.0.parquet \
-    --lookup-output data/mappings/efo_similarity_lookup_v3.90.0_0.5.parquet
+pixi run --manifest-path scripts/r/pixi.toml similarity
 ```
 
-Without the output flags it overwrites the paper's 3.84 lookup. EFO 3.90 takes about 20 minutes
-and 5 GB of RAM on one core.
+By default it reads `efo_v3.93.0.obo` and writes `efo_similarity_lookup_v3.93.0_0.5.parquet`,
+which `configs/default.yaml` reads, and the full matrix next to it; `--efo-path`, `--output` and
+`--lookup-output` select another release. EFO 3.93 takes about 22 minutes and 5 GB of RAM on one
+core.
 
 ## Minikel et al. (2024) benchmark data
 
@@ -258,8 +266,8 @@ I→Approved therefore gives a different quantity from their published 2.63.
 After placing source files according to `configs/parsing.yaml`:
 
 ```bash
-pip install ct-validation[parse]
-python scripts/parse/gene_universe.py
-python scripts/parse/minikel.py
-python scripts/parse/run_parsing.py
+uv sync --extra parse
+uv run scripts/parse/gene_universe.py
+uv run scripts/parse/minikel.py
+uv run scripts/parse/run_parsing.py
 ```

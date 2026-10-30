@@ -8,28 +8,26 @@
 # Dependencies (ontologySimilarity, ontologyIndex, arrow, optparse) are pinned in pixi.toml and
 # pixi.lock, from conda-forge; conda-forge has no osx-arm64 build of ontologySimilarity, so
 # pixi's `install` task, which `similarity` runs first, compiles it from CRAN. From the repo root:
-#   pixi run --manifest-path scripts/r/pixi.toml similarity -- \
-#       --efo-path data/mappings/efo_v3.90.0.obo \
-#       --output data/mappings/efo_full_similarity_matrix_v3.90.0.parquet \
-#       --lookup-output data/mappings/efo_similarity_lookup_v3.90.0_0.5.parquet
-# The default outputs are the paper's 3.84 files, which a bare run overwrites.
+#   pixi run --manifest-path scripts/r/pixi.toml similarity
+# The defaults build EFO 3.93's lookup, which configs/default.yaml reads. The paper's, from EFO
+# 3.84, is efo_similarity_lookup_0.5.parquet in the data release.
 
 library(optparse)
 
 option_list <- list(
   make_option("--efo-path",
     type = "character",
-    default = "data/mappings/efo_v3.84.0.obo",
+    default = "data/mappings/efo_v3.93.0.obo",
     help = "Path to EFO ontology OBO file"
   ),
   make_option("--output",
     type = "character",
-    default = "data/mappings/efo_full_similarity_matrix.parquet",
+    default = "data/mappings/efo_full_similarity_matrix_v3.93.0.parquet",
     help = "Output parquet path for full matrix (written incrementally)"
   ),
   make_option("--lookup-output",
     type = "character",
-    default = "data/mappings/efo_similarity_lookup_0.5.parquet",
+    default = "data/mappings/efo_similarity_lookup_v3.93.0_0.5.parquet",
     help = "Output parquet path for lookup table"
   ),
   make_option("--lookup-threshold",

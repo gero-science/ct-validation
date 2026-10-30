@@ -41,9 +41,9 @@ often** as unsupported ones (95% CI 1.45–1.49).
 ## Install
 
 ```bash
-pip install ct-validation          # Python 3.11+
-pip install ct-validation[plot]    # + forest plots
-pip install ct-validation[mcp]     # + MCP server for agent workflows
+uv add ct-validation           # Python 3.11+
+uv add "ct-validation[plot]"   # + forest plots
+uv add "ct-validation[mcp]"    # + MCP server for agent workflows
 ```
 
 ## Applications
@@ -337,7 +337,7 @@ instructions.
 </details>
 
 <details>
-<summary><b>Reproducing the paper</b></summary>
+<summary id="reproducing-the-paper"><b>Reproducing the paper</b></summary>
 
 The paper's results were produced with release v0.4.3 (archived code
 [10.5281/zenodo.22901497](https://doi.org/10.5281/zenodo.22901497)) and benchmark data
@@ -351,8 +351,7 @@ git checkout v0.4.3
 curl -LO https://zenodo.org/records/22901451/files/ct-validation-data.tar.gz
 tar xzf ct-validation-data.tar.gz
 cd notebooks
-pip install -r requirements.txt   # pinned env: Jupyter + plotting theme + editable install
-python benchmark.py
+uv run --with-requirements requirements.txt python benchmark.py   # v0.4.3's pinned env
 ```
 
 The Zenodo code archive can stand in for the git checkout. Later releases may give different
@@ -362,9 +361,10 @@ estimates as methods and data sources are updated; the
 The full run takes about 10 minutes and peaks at 8.5 GB resident memory, so 16 GB of RAM is
 recommended.
 
-To rebuild the parsed data from the sources instead, set `efo_remap_obsolete: false` in
-`configs/parsing.yaml`: the paper predates the remapping of obsolete EFO ids (see
-[DATA_SOURCES.md](DATA_SOURCES.md#efo-releases-and-obsolete-terms)).
+To rebuild the parsed data from the sources instead, switch the configs back to the paper's
+sources: the defaults are Open Targets 26.09 and EFO 3.93 with obsolete ids remapped, and the
+paper used Open Targets 25.12 and EFO 3.84 without remapping (see
+[DATA_SOURCES.md](DATA_SOURCES.md#open-targets-and-efo-releases)).
 
 | Resource                      | Location                                                           |
 | ----------------------------- | ------------------------------------------------------------------ |
@@ -384,6 +384,12 @@ CI runs on push/PR to `main` (Python 3.11–3.13, `ruff`, `pytest`):
 uv sync --extra mcp --extra parse
 uv run ruff check src tests scripts
 uv run pytest tests/ -v
+```
+
+The benchmark notebook (`notebooks/benchmark.py`, paired with `benchmark.ipynb` by jupytext):
+
+```bash
+uv run --group notebook jupyter lab notebooks/
 ```
 
 </details>
