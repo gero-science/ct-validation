@@ -14,15 +14,15 @@ everything `notebooks/benchmark.py` reads, so the benchmark runs without re-fetc
 | `data/clinical_trials/`           | the five parsed sources, `aggregated/`, and `aggregated_unknown_ongoing/`                     |
 | `data/minikel/`                   | the three processed parquets                                                                  |
 | `data/mappings/`                  | similarity lookup at 0.5, gene universe, `efo.obo`, `d2023.bin`, and the crosswalks           |
-| `data/sources/opentargets/25.12/` | `target/`, `known_drug/`, and the three association tables                                    |
+| `data/sources/opentargets/26.09/` | `target/` and the three association tables                                                    |
 | `data/sources/dgidb/`             | `drugs.tsv.gz`                                                                                |
 | `data/sources/genebass/`          | `gene_associations_p1e-7.parquet`, the Hail-preprocessed intermediate                         |
 
 The Open Targets and DGIdb entries under `sources/` are verbatim upstream releases rather than
-our derivatives; they ship because the notebook opens them directly — `known_drug/` for the Open
-Targets trial arm, the association tables for the per-subsource breakdown and the prior-art
-comparison. The Genebass file is ours: the output of `genebass_preprocess.py`, included so the
-parsing step can be re-run without a GCP account or Hail.
+our derivatives; they ship because the notebook opens them directly — the association tables
+for the per-subsource breakdown and the prior-art comparison. The Genebass file is ours: the
+output of `genebass_preprocess.py`, included so the parsing step can be re-run without a GCP
+account or Hail.
 
 Deliberately excluded:
 
@@ -56,8 +56,7 @@ then, in `configs/parsing.yaml`, point the Open Targets paths at `25.12`, use
 `opentargets_known_drug` (commented there) in place of the four clinical datasets, and set
 `efo_ontology` to `efo_v3.84.0.obo` and `efo_remap_obsolete` to false; in `configs/default.yaml`,
 use the data release's `efo_similarity_lookup_0.5.parquet`. Every other source is pinned to the
-version listed below. `notebooks/benchmark.py` reads the data release directly, so it reproduces
-the paper without fetching anything.
+version listed below.
 
 ## Genetic evidence
 
@@ -266,8 +265,8 @@ I→Approved therefore gives a different quantity from their published 2.63.
 After placing source files according to `configs/parsing.yaml`:
 
 ```bash
-pip install ct-validation[parse]
-python scripts/parse/gene_universe.py
-python scripts/parse/minikel.py
-python scripts/parse/run_parsing.py
+uv sync --extra parse
+uv run scripts/parse/gene_universe.py
+uv run scripts/parse/minikel.py
+uv run scripts/parse/run_parsing.py
 ```
