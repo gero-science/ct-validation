@@ -337,7 +337,7 @@ instructions.
 </details>
 
 <details>
-<summary><b>Reproducing the paper</b></summary>
+<summary id="reproducing-the-paper"><b>Reproducing the paper</b></summary>
 
 The paper's results were produced with release v0.4.3 (archived code
 [10.5281/zenodo.22901497](https://doi.org/10.5281/zenodo.22901497)) and benchmark data

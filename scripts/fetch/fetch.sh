@@ -41,6 +41,8 @@ trap on_error ERR
 WGET="wget -q --show-progress --backups=0"
 BASE_DIR="${BASE_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 OT_RELEASE="${OT_RELEASE:-26.09}"
+# At least as recent as the EFO OT_RELEASE was built with: remapping carries older ids forward,
+# not back. Bump it with each new Open Targets release.
 EFO_VERSION="${EFO_VERSION:-3.93.0}"
 
 fetch() {

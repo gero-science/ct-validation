@@ -46,7 +46,8 @@ times faster than the FTP; any release the bucket does not list comes from the F
 
 A release's disease ids follow its own EFO, so the lookup must be built from that EFO: ids EFO
 has replaced since find no match. The paper used Open Targets 25.12, EFO 3.84 and no remapping.
-To parse it again, fetch them:
+Its results reproduce from the archived code and data (see
+[Reproducing the paper](README.md#reproducing-the-paper)); to parse its sources again, fetch them:
 
 ```bash
 OT_RELEASE=25.12 EFO_VERSION=3.84.0 ./scripts/fetch/fetch.sh 3,5,10
