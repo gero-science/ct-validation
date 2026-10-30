@@ -54,10 +54,10 @@ fetch() {
 OT_FTP="https://ftp.ebi.ac.uk/pub/databases/opentargets/platform"
 OT_S3="https://open-targets-public-data-releases.s3.amazonaws.com"
 
-# Open Targets releases from 25.12 are read from its public S3 bucket, which serves the same
-# files several times faster than the FTP; earlier ones from the FTP. YY.MM compares as a string.
+# Open Targets releases are read from its public S3 bucket, which serves the same files several
+# times faster than the FTP, when the bucket lists them (from 25.12); otherwise from the FTP.
 ot_from_s3() {
-    [[ ! "$OT_RELEASE" < "25.12" ]]
+    [[ "$(curl -fsS "${OT_S3}/?list-type=2&max-keys=1&prefix=platform/${OT_RELEASE}/")" == *"<Key>"* ]]
 }
 
 ot_release_url() {
