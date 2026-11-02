@@ -2,8 +2,9 @@
 
 # === DATA PATHS ===
 data:
-    # Semantic similarity
-    efo_similarity_lookup: "data/mappings/efo_similarity_lookup_0.5.parquet"
+    # Semantic similarity, built from EFO 3.93 like the parsing defaults; the paper's, from EFO
+    # 3.84, is efo_similarity_lookup_0.5.parquet in the data release
+    efo_similarity_lookup: "data/mappings/efo_similarity_lookup_v3.93.0_0.5.parquet"
 
     # Validation inputs (from parsing scripts)
     genetic_evidence: "data/genetic_evidence/aggregated/genetic_evidence.parquet"

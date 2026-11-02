@@ -74,6 +74,12 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.14.10",
 ]
+notebook = [
+    "ct-validation[plot]",
+    "jupyterlab",
+    "jupytext",
+    "tidepool-theme",
+]
 
 [tool.ruff]
 line-length = 100

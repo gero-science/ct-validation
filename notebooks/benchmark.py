@@ -41,7 +41,6 @@ from ct_validation.validation.statistics import katz_ci_risk_ratio, woolf_ci_odd
 # its censoring rule rather than restating it.
 sys.path.insert(0, str(Path("../scripts/parse/clinical_trials").resolve()))
 import aggregate
-import trial_status
 
 # Every rebuild stages a subset, so `_load_sources` warns NOT FOUND for the legs left out.
 logging.getLogger(aggregate.__name__).setLevel(logging.ERROR)
@@ -62,9 +61,9 @@ CLINICAL_TRIALS = CT_DIR / "aggregated" / "gene_indication_max_phase.parquet"
 CT_UNKNOWN_ONGOING = CT_DIR / "aggregated_unknown_ongoing" / "gene_indication_max_phase.parquet"
 GD_BY_SOURCE = CT_DIR / "aggregated" / "gene_drug_by_source.parquet"
 DI_BY_SOURCE = CT_DIR / "aggregated" / "drug_indication_by_source.parquet"
-OT_DATA = DATA / "sources" / "opentargets" / "25.12"
+OT_DATA = DATA / "sources" / "opentargets" / "26.09"
 OT_TARGET = OT_DATA / "target"
-SIMILARITY = DATA / "mappings" / "efo_similarity_lookup_0.5.parquet"
+SIMILARITY = DATA / "mappings" / "efo_similarity_lookup_v3.93.0_0.5.parquet"
 GENE_UNIVERSE = DATA / "mappings" / "protein_coding_genes.txt"
 DGIDB_DRUGS = DATA / "sources" / "dgidb" / "drugs.tsv.gz"
 
@@ -81,8 +80,6 @@ GE_OPENTARGETS_SOMATIC = GE_DIR / "opentargets_with_somatic.parquet"
 GE_COMBINED_SOMATIC = GE_DIR / "aggregated" / "genetic_evidence_with_somatic.parquet"
 
 MINIKEL_DIR = DATA / "minikel"
-# Open Targets as a standalone provider: `known_drug` as released, not the aggregate.
-OT_KNOWN_DRUG = OT_DATA / "known_drug"
 
 VALIDATE_KWARGS = dict(similarity_lookup=SIMILARITY, gene_universe=GENE_UNIVERSE)
 
@@ -138,7 +135,7 @@ def filter_ct_by(ct: pd.DataFrame, column: str, source: str) -> pd.DataFrame:
     Selects the pairs a source *contributed to*, not its phases: `max_phase` in the collapsed
     table is the maximum over every source that reported the pair. When the phases have to
     be a single source's own, rebuild from that source's own tables instead —
-    `known_drug_pairs` does it for Open Targets.
+    `rebuild_ct` does it.
     """
     return ct[ct[column].str.contains(source, na=False)][
         ["gene", "efo_id", "max_phase", "is_ongoing"]
@@ -176,67 +173,6 @@ def rebuild_ct(gene_drug: list[str], drug_indication: list[str]) -> pd.DataFrame
         return pd.read_parquet(out / "gene_indication_max_phase.parquet")
 
 
-def known_drug_pairs(*, censor: bool = True) -> pd.DataFrame:
-    """Target-indication pairs straight from Open Targets `known_drug`.
-
-    Group by target and disease, keep the maximum clinical phase and drop anything at or
-    below phase 0.5. No drug clustering and no second source, so a gene carries only the
-    phases Open Targets records against that indication. Symbols come from the table's own
-    `approvedSymbol`, which matches the target index on every row; two are shared by X/Y
-    pseudoautosomal targets, which the grouping collapses.
-
-    The table carries per-trial `status`, so `is_ongoing` is derived from it with the same
-    maps the Open Targets parser uses. Pass `censor=False` for the prior art's construction,
-    which reads every record as concluded and drops none.
-    """
-    with duckdb.connect() as con:
-        # sql
-        rows = con.sql(
-            f"""
-            SELECT approvedSymbol AS gene,
-                   -- First underscore only, matching the GE side these pairs join against.
-                   regexp_replace(diseaseId, '_', ':') AS efo_id,
-                   CAST(phase AS INTEGER) AS phase,
-                   status
-            FROM read_parquet('{OT_KNOWN_DRUG / "*.parquet"}')
-            WHERE phase > 0.5
-            """,
-        ).fetchdf()
-
-        if not censor:
-            return (
-                rows.groupby(["gene", "efo_id"], as_index=False)["phase"]
-                .max()
-                .rename(
-                    columns={"phase": "max_phase"},
-                )
-            )
-
-        rows = trial_status.apply(
-            rows,
-            trial_status.OPENTARGETS_CONCLUDED,
-            trial_status.OPENTARGETS_DROPPED,
-        )
-        # `fillna(True)` mirrors aggregate.py's `COALESCE(is_concluded, TRUE)` — an unknown
-        # status is read as concluded there, and the two spellings must not drift.
-        con.register(
-            "kd",
-            rows.assign(
-                phase_concluded=rows["phase"].where(rows["is_concluded"].fillna(value=True)),
-            ),
-        )
-        # sql
-        return con.sql(
-            f"""
-            SELECT gene, efo_id,
-                   CAST(max(phase) AS INTEGER) AS max_phase,
-                   {aggregate.is_ongoing_sql()} AS is_ongoing
-            FROM kd
-            GROUP BY 1, 2
-            """,
-        ).fetchdf()
-
-
 def savefig(fig, name):
     """Save figure as both SVG and PNG."""
     fig.savefig(FIGS / f"{name}.svg", bbox_inches="tight", metadata={"Date": None})
@@ -269,7 +205,8 @@ print(f"Minikel GE: {len(minikel_ge):,} pairs, {minikel_ge['gene'].nunique():,} 
 # | Open Targets GE   |             |                 |                 |
 
 # %%
-ct_ot_only = known_drug_pairs()
+# Open Targets as a standalone provider: both legs from its own parsed tables only.
+ct_ot_only = rebuild_ct(["opentargets"], ["opentargets"])
 
 GE_ARMS = {
     "Minikel et al. GE": minikel_ge,
@@ -660,7 +597,7 @@ for name, path in [("Combined", GE_COMBINED), *GE_SOURCES.items()]:
 
 # CT sources
 ct_all = pd.read_parquet(CLINICAL_TRIALS)
-coverage_rows.append(coverage_row("clinical_trials", "Open Targets (known_drug)", ct_ot_only))
+coverage_rows.append(coverage_row("clinical_trials", "Open Targets", ct_ot_only))
 coverage_rows.append(coverage_row("clinical_trials", "Combined", ct_all))
 
 coverage = pd.DataFrame(coverage_rows)
@@ -774,7 +711,11 @@ print(ct_pair_phase_profile.to_string(index=False))
 # %%
 ct_source_licences = pd.DataFrame(
     [
-        ("Open Targets", "CC0 1.0", "known_drug is ChEMBL-derived; the Platform output is CC0"),
+        (
+            "Open Targets",
+            "CC0 1.0",
+            "clinical_report is partly ChEMBL-derived; the Platform output is CC0",
+        ),
         ("TrialPanorama", "Apache 2.0", "HuggingFace dataset card only; no LICENSE file"),
         ("ChEMBL", "CC BY-SA 3.0", "share-alike propagates to any redistributed derivative"),
         (
@@ -810,7 +751,7 @@ ge_source_licences = pd.DataFrame(
             "‘NCBI itself places no restrictions on the use or distribution of the data "
             "contained therein’; submitters may hold rights, attribution requested",
         ),
-        ("Open Targets", "CC0 1.0", "association_by_datasource_direct, same 25.12 release"),
+        ("Open Targets", "CC0 1.0", "association_by_datasource_direct, same 26.09 release"),
         (
             "Genebass",
             "none stated (unclear)",
@@ -1087,9 +1028,9 @@ savefig(fig, "s2_di_upset")
 # `overall` pools every Open Targets evidence type, including the `chembl` known-drug channel,
 # which encodes the outcome being predicted.
 #
-# **Note:** This section requires raw Open Targets Platform 25.12 data
-# (`association_by_datasource_direct`, `association_overall_direct`, `known_drug`, `target`)
-# downloaded to `data/sources/opentargets/25.12/`.
+# **Note:** This section requires raw Open Targets Platform 26.09 data
+# (`association_by_datasource_direct`, `association_overall_direct`, `target`)
+# downloaded to `data/sources/opentargets/26.09/`.
 # See [DATA_SOURCES.md](../DATA_SOURCES.md) for download instructions.
 
 # %%
@@ -1099,11 +1040,19 @@ print(
     f"{(ct_ot_only['max_phase'] == 4).mean():.1%} approved",
 )
 
+
+def read_associations(table: str, **kwargs) -> pd.DataFrame:
+    """An Open Targets association table, its 26.03+ columns renamed to datasourceId/score."""
+    df = pd.read_parquet(
+        OT_DATA / table,
+        columns=["aggregationValue", "targetId", "diseaseId", "associationScore"],
+        **kwargs,
+    )
+    return df.rename(columns={"aggregationValue": "datasourceId", "associationScore": "score"})
+
+
 # Load all datasource associations and map ENSG -> gene symbol
-ot_by_ds = pd.read_parquet(
-    OT_DATA / "association_by_datasource_direct",
-    columns=["datasourceId", "targetId", "diseaseId", "score"],
-)
+ot_by_ds = read_associations("association_by_datasource_direct")
 ot_targets = pd.read_parquet(OT_TARGET, columns=["id", "approvedSymbol"])
 ensg_to_symbol = dict(zip(ot_targets["id"], ot_targets["approvedSymbol"]))
 ot_by_ds["gene"] = ot_by_ds["targetId"].map(ensg_to_symbol)
@@ -1111,10 +1060,7 @@ ot_by_ds["efo_id"] = ot_by_ds["diseaseId"].str.replace("_", ":")
 ot_by_ds = ot_by_ds[ot_by_ds["gene"].notna()]
 
 # Also load overall associations
-ot_overall = pd.read_parquet(
-    OT_DATA / "association_overall_direct",
-    columns=["targetId", "diseaseId", "score"],
-)
+ot_overall = read_associations("association_overall_direct")
 ot_overall["gene"] = ot_overall["targetId"].map(ensg_to_symbol)
 ot_overall["efo_id"] = ot_overall["diseaseId"].str.replace("_", ":")
 ot_overall = ot_overall[ot_overall["gene"].notna()]
@@ -1289,13 +1235,14 @@ savefig(fig, "s6_similarity_thresholds")
 # non-oncology.
 #
 # Oncology is MeSH tree C04 as in Minikel et al., plus the neoplasm branch of EFO
-# (EFO:0000616) for identifiers that never passed through MeSH.
+# (MONDO:0005070) for identifiers that never passed through MeSH.
 
 # %%
-EFO_OBO = DATA / "mappings" / "efo_v3.84.0.obo"
+EFO_OBO = DATA / "mappings" / "efo_v3.93.0.obo"
 MESH_TO_EFO = DATA / "mappings" / "mesh_to_efo.tsv"
 MESH_DESCRIPTORS = DATA / "mappings" / "d2023.bin"
-NEOPLASM = "EFO:0000616"
+# EFO:0000616 up to EFO 3.84; obsolete by 3.93, replaced by the MONDO term
+NEOPLASM = "MONDO:0005070"
 
 
 def _obo_curie(raw: str) -> str:
@@ -1448,9 +1395,10 @@ savefig(fig, "s7_oncology_strata")
 # per pair, entry at Phase I, "all oncology-related indications were excluded", Fisher's
 # exact test on approved (Phase IV) against not approved (Phases I-III), genetic evidence
 # "propagated through disease ontology" and matched to indications exactly, and no
-# censoring. The trial table below is the released `known_drug` aggregation of that same
-# evidence: 459 of 74,046 target-disease pairs carrying a ChEMBL association have no
-# `known_drug` row (0.6%), and no `known_drug` row lacks the association. We are on 25.12.
+# censoring. We are on 26.09, where `known_drug` is gone: the trial table below is our Open
+# Targets arm (§2) read from its successor, `clinical_report`, with censoring removed. That
+# table also carries non-ChEMBL reports and drops withdrawn trials, so the phase check below
+# is approximate rather than a reproduction of their table.
 #
 # The comparison arm is one Open Targets datasource, `gwas_credible_sets`, from the
 # *indirect* release because they propagate. The rare-disease resources they also test
@@ -1461,11 +1409,10 @@ savefig(fig, "s7_oncology_strata")
 
 
 # %%
-# `censor=False`: their construction reads every record as concluded and drops no status.
-known_drug_ct = known_drug_pairs(censor=False)
 # No `is_ongoing` on this table, so validate() censors nothing, as the prior art does not.
 # No MeSH leg, so only the ontology branch of §8 applies.
-prior_art_ct = known_drug_ct[~known_drug_ct["efo_id"].isin(EFO_NEOPLASM)]
+prior_art_ct = uncensored(ct_ot_only)
+prior_art_ct = prior_art_ct[~prior_art_ct["efo_id"].isin(EFO_NEOPLASM)]
 
 # Their Methods report the phase composition of the final table, which checks it directly.
 phase_check = pd.DataFrame({"theirs": pd.Series({1: 6163, 2: 14410, 3: 12240, 4: 4564})})
@@ -1476,10 +1423,9 @@ print(phase_check.sort_index().to_string())
 
 def gwas_credible_sets(min_score: float = 0.0) -> pd.DataFrame:
     """Their genetic support: the `gwas_credible_sets` datasource, propagated."""
-    df = pd.read_parquet(
-        OT_DATA / "association_by_datasource_indirect",
-        columns=["datasourceId", "targetId", "diseaseId", "score"],
-        filters=[("datasourceId", "==", "gwas_credible_sets")],
+    df = read_associations(
+        "association_by_datasource_indirect",
+        filters=[("aggregationValue", "==", "gwas_credible_sets")],
     )
     df = df[df["score"] >= min_score] if min_score else df
     df = df.assign(
