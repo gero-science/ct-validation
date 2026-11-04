@@ -8,21 +8,23 @@ data release ships.
 The release archive ([10.5281/zenodo.21839216](https://doi.org/10.5281/zenodo.21839216)) carries
 everything `notebooks/benchmark.py` reads, so the benchmark runs without re-fetching anything:
 
-| Path                              | Contents                                                                                      |
-| --------------------------------- | --------------------------------------------------------------------------------------------- |
-| `data/genetic_evidence/`          | the four parsed sources, `opentargets_with_somatic.parquet`, and both aggregates              |
-| `data/clinical_trials/`           | the five parsed sources, `aggregated/`, and `aggregated_unknown_ongoing/`                     |
-| `data/minikel/`                   | the three processed parquets                                                                  |
-| `data/mappings/`                  | similarity lookup at 0.5, gene universe, `efo.obo`, `d2023.bin`, and the crosswalks           |
-| `data/sources/opentargets/26.09/` | `target/` and the three association tables                                                    |
-| `data/sources/dgidb/`             | `drugs.tsv.gz`                                                                                |
-| `data/sources/genebass/`          | `gene_associations_p1e-7.parquet`, the Hail-preprocessed intermediate                         |
+| Path                              | Contents                                                                                                                      |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `data/genetic_evidence/`          | the four parsed sources, `opentargets_with_somatic.parquet`, and both aggregates                                              |
+| `data/clinical_trials/`           | the five parsed sources, `aggregated/`, and `aggregated_unknown_ongoing/`                                                     |
+| `data/minikel/`                   | the three processed parquets                                                                                                  |
+| `data/mappings/`                  | similarity lookups at 0.5 (EFO 3.93, and the paper's 3.84), gene universe, `efo_v3.93.0.obo`, `d2023.bin`, and the crosswalks |
+| `data/sources/opentargets/26.09/` | `target/` and the three association tables                                                                                    |
+| `data/sources/dgidb/`             | `drugs.tsv.gz`                                                                                                                |
+| `data/sources/genebass/`          | `gene_associations_p1e-7.parquet`, the Hail-preprocessed intermediate                                                         |
 
-The Open Targets and DGIdb entries under `sources/` are verbatim upstream releases rather than
-our derivatives; they ship because the notebook opens them directly — the association tables
-for the per-subsource breakdown and the prior-art comparison. The Genebass file is ours: the
-output of `genebass_preprocess.py`, included so the parsing step can be re-run without a GCP
-account or Hail.
+The Open Targets and DGIdb entries under `sources/` are upstream releases rather than our
+derivatives; they ship because the notebook opens them directly — the association tables for
+the per-subsource breakdown and the prior-art comparison. They are verbatim except the three
+association tables, cut to `aggregationType`, `aggregationValue`, `targetId`, `diseaseId` and
+`associationScore`, all the parsers and the notebook read: in full they take 4.1 GB. The
+Genebass file is ours: the output of `genebass_preprocess.py`, included so the parsing step can
+be re-run without a GCP account or Hail.
 
 Deliberately excluded:
 
