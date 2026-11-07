@@ -15,9 +15,10 @@ def _setup_source(
     if isinstance(data, pd.DataFrame):
         conn.register(name, data)
     else:
-        # A frame registered earlier under this name would hide the view
+        # A frame registered earlier under this name would hide the view.
         conn.unregister(name)
-        conn.execute(f"CREATE OR REPLACE VIEW {name} AS SELECT * FROM read_parquet('{data}')")
+        # Avoid interpolating file paths into SQL string literals.
+        conn.read_parquet(str(data)).create_view(name, replace=True)
 
 
 def get_expanded_disease_set(

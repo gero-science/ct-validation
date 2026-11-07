@@ -347,3 +347,32 @@ def test_check_similarity_lookup_rejects_weak_diagonal():
 
     with pytest.raises(ValueError, match="diagonal"):
         check_similarity_lookup(sim)
+
+
+def test_matching_reads_parquet_filename_with_apostrophe(tmp_path):
+    """A Parquet filename with an apostrophe should be readable."""
+    evidence_path = tmp_path / "researcher's_evidence.parquet"
+
+    pd.DataFrame(
+        {
+            "gene": ["GENE1"],
+            "efo_id": ["EFO:001"],
+        }
+    ).to_parquet(evidence_path)
+
+    clinical_trials = pd.DataFrame(
+        {
+            "gene": ["GENE1"],
+            "efo_id": ["EFO:001"],
+            "max_phase": [2],
+        }
+    )
+
+    result = create_matched_pairs_set(
+        evidence_path,
+        clinical_trials,
+        similarity_pairs=None,
+        similarity_threshold=0.8,
+    )
+
+    assert result == {("GENE1", "EFO:001")}
