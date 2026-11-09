@@ -12,6 +12,7 @@ on:
 
 jobs:
   test:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -37,7 +38,7 @@ jobs:
       - name: Test
         run: uv run pytest tests/ -v
 
-  # Newest versions pyproject.toml allows, as pip resolves them (uv sync keeps hail's pandas<3)
+  # Newest versions pyproject.toml allows, as pip resolves them (uv.lock keeps hail's pandas<3)
   test-newest:
     runs-on: ubuntu-latest
     env:
