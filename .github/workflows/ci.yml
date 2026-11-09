@@ -32,3 +32,25 @@ jobs:
 
       - name: Test
         run: uv run pytest tests/ -v
+
+  # The newest versions pyproject.toml allows, resolved as a fresh `pip install` resolves them.
+  # The job above tests only uv.lock's pins, and `uv sync --upgrade` would still hold every
+  # package to what all extras accept (genebass's hail keeps pandas below 3).
+  test-newest:
+    runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.13"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install the newest allowed dependencies
+        run: |
+          uv venv
+          uv pip install ".[mcp,parse]" pytest
+
+      - name: Test
+        run: uv run --no-sync pytest tests/ -v
