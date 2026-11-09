@@ -19,21 +19,21 @@ import ct_validation as ctv
 ctv.validate(
     clinical_trials="data/clinical_trials/aggregated/gene_indication_max_phase.parquet",
     targets="data/genetic_evidence/aggregated/genetic_evidence.parquet",
-    similarity_lookup="data/mappings/efo_similarity_lookup_0.5.parquet",
+    similarity_lookup="data/mappings/efo_similarity_lookup_v3.93.0_0.5.parquet",
     gene_universe="data/mappings/protein_coding_genes.txt",
 )
 ```
 
 ```text
  phase_label  x_yes  n_yes    x_no     n_no    rr  rr_ci_lower  rr_ci_upper    p_value
-        I→II  17541  18544 1660990  1815079  1.03         1.03         1.04   2.9e-57
-      II→III  12979  16603 1029594  1531787  1.16         1.15         1.17  4.3e-211
-III→Approved   8576  12221  550860   934446  1.19         1.18         1.20  7.2e-144
-  I→Approved   8576  16848  550860  1590728  1.47         1.45         1.49        0.0
+        I→II  18962  19988 1756511  1904959  1.03         1.03         1.03   1.3e-49
+      II→III  14056  18106 1065912  1629150  1.19         1.18         1.20  1.2e-277
+III→Approved   8978  13261  542920   972049  1.21         1.20         1.23  7.6e-169
+  I→Approved   8978  18337  542920  1683735  1.52         1.50         1.54        0.0
 ```
 
-The final row is the phase I to approval composite: supported pairs progressed **1.47 times as
-often** as unsupported ones (95% CI 1.45–1.49).
+The final row is the phase I to approval composite: supported pairs progressed **1.52 times as
+often** as unsupported ones (95% CI 1.50–1.54).
 `rr` is the *relative success* (RS) metric of [Nelson et al.
 (2015)](https://doi.org/10.1038/ng.3314) and [Minikel et al.
 (2024)](https://doi.org/10.1038/s41586-024-07316-0) — a risk ratio of phase advancement.

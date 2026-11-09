@@ -5,7 +5,8 @@ data release ships.
 
 ## Data release
 
-The release archive ([10.5281/zenodo.21839216](https://doi.org/10.5281/zenodo.21839216)) carries
+The release archive (`ct-validation-data.tar.gz`, attached to the
+[v0.5.0 release](https://github.com/gero-science/ct-validation/releases/tag/v0.5.0)) carries
 everything `notebooks/benchmark.py` reads, so the benchmark runs without re-fetching anything:
 
 | Path                              | Contents                                                                                                                      |
