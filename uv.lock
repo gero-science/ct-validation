@@ -905,7 +905,7 @@ wheels = [
 
 [[package]]
 name = "ct-validation"
-version = "0.5.0"
+version = "0.5.1"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
@@ -954,11 +954,11 @@ notebook = [
 [package.metadata]
 requires-dist = [
     { name = "cyvcf2", marker = "extra == 'parse'" },
-    { name = "duckdb", specifier = ">=1.4.3" },
+    { name = "duckdb", specifier = ">=1.4.3,<2" },
     { name = "hail", marker = "extra == 'genebass'" },
     { name = "huggingface-hub", marker = "extra == 'fetch'" },
     { name = "matplotlib", marker = "extra == 'plot'" },
-    { name = "mcp", extras = ["cli"], marker = "extra == 'mcp'", specifier = ">=1.0" },
+    { name = "mcp", extras = ["cli"], marker = "extra == 'mcp'", specifier = ">=1.0,<2" },
     { name = "numpy", specifier = ">=2.3.3" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "polars", marker = "extra == 'parse'", specifier = ">=1.5" },

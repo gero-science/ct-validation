@@ -1,6 +1,6 @@
 [project]
 name = "ct-validation"
-version = "0.5.0"
+version = "0.5.1"
 description = "Benchmarking target-indication evidence against clinical trial outcomes"
 readme = "README.md"
 authors = [
@@ -25,7 +25,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "duckdb>=1.4.3",
+    "duckdb>=1.4.3,<2",
     "numpy>=2.3.3",
     "pandas>=2.3.3",
     "pyarrow>=22.0.0",
@@ -64,7 +64,7 @@ plot = [
     "matplotlib",
 ]
 mcp = [
-    "mcp[cli]>=1.0",
+    "mcp[cli]>=1.0,<2",
 ]
 
 [dependency-groups]
