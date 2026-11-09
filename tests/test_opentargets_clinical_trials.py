@@ -328,10 +328,10 @@ def test_mechanisms_carry_target_class_and_reference_sources(tmp_path):
         release["target_path"],
     ).sort_values("gene")
 
-    assert result[["gene", "target_class", "subsource"]].values.tolist() == [
-        ["GENEA", "Enzyme", "DailyMed|PubMed"],
-        ["GENEB", None, "DailyMed|PubMed"],
-    ]
+    assert result["gene"].tolist() == ["GENEA", "GENEB"]
+    assert result["subsource"].tolist() == ["DailyMed|PubMed", "DailyMed|PubMed"]
+    assert result["target_class"].iloc[0] == "Enzyme"
+    assert result["target_class"].isna().tolist() == [False, True]
 
 
 def test_datasets_replacing_known_drug_write_the_same_outputs(tmp_path):

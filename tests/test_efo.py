@@ -168,8 +168,10 @@ def test_remap_efo_ids(efo):
     )
     out = remap_efo_ids(df, efo, label_column="efo_term")
     assert out["gene"].tolist() == ["A", "B", "D", "E"]
-    assert out["efo_id"].tolist() == ["EFO:0000001", "MONDO:0000001", "HP:0000001", None]
-    assert out["efo_term"].tolist() == ["live efo", "live mondo", "outside efo", None]
+    assert out["efo_id"].tolist()[:3] == ["EFO:0000001", "MONDO:0000001", "HP:0000001"]
+    assert out["efo_term"].tolist()[:3] == ["live efo", "live mondo", "outside efo"]
+    # A missing id stays missing: None in pandas 2, NaN in pandas 3
+    assert out[["efo_id", "efo_term"]].iloc[3].isna().all()
     # The input is not modified
     assert df["efo_id"].iloc[1] == "EFO:0000013"
 
