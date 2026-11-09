@@ -64,7 +64,7 @@ plot = [
     "matplotlib",
 ]
 mcp = [
-    "mcp[cli]>=1.0,<2",
+    "mcp[cli]>=1.22,<2",
 ]
 
 [dependency-groups]

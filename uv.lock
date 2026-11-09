@@ -958,7 +958,7 @@ requires-dist = [
     { name = "hail", marker = "extra == 'genebass'" },
     { name = "huggingface-hub", marker = "extra == 'fetch'" },
     { name = "matplotlib", marker = "extra == 'plot'" },
-    { name = "mcp", extras = ["cli"], marker = "extra == 'mcp'", specifier = ">=1.0,<2" },
+    { name = "mcp", extras = ["cli"], marker = "extra == 'mcp'", specifier = ">=1.22,<2" },
     { name = "numpy", specifier = ">=2.3.3" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "polars", marker = "extra == 'parse'", specifier = ">=1.5" },

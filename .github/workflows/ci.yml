@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Weekly, so an upstream release that breaks the published package shows without a push
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
 
 jobs:
   test:
@@ -33,9 +37,7 @@ jobs:
       - name: Test
         run: uv run pytest tests/ -v
 
-  # The newest versions pyproject.toml allows, resolved as a fresh `pip install` resolves them.
-  # The job above tests only uv.lock's pins, and `uv sync --upgrade` would still hold every
-  # package to what all extras accept (genebass's hail keeps pandas below 3).
+  # Newest versions pyproject.toml allows, as pip resolves them (uv sync keeps hail's pandas<3)
   test-newest:
     runs-on: ubuntu-latest
     env:
